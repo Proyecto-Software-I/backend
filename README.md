@@ -48,6 +48,7 @@ Antes de instalar el proyecto necesitas:
 * Node.js 24 LTS.
 * npm.
 * Git.
+* OpenSpec CLI.
 
 Puedes comprobar las versiones instaladas con:
 
@@ -55,6 +56,7 @@ Puedes comprobar las versiones instaladas con:
 node --version
 npm --version
 git --version
+openspec --version
 ```
 
 ## Instalación
@@ -70,6 +72,18 @@ Instala las dependencias:
 
 ```bash
 npm install
+```
+
+Instala OpenSpec globalmente:
+
+```bash
+npm install --global @fission-ai/openspec@latest
+```
+
+Comprueba la instalación:
+
+```bash
+openspec --version
 ```
 
 ## Variables de entorno
