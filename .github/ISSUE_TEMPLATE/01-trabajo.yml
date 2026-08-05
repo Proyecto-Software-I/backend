@@ -1,0 +1,225 @@
+name: Trabajo del proyecto
+description: Crear una tarea, corrección o cambio planificado del proyecto.
+title: ""
+projects:
+  - Proyecto-Software-I/1
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Este formulario debe ser completado por el responsable del proyecto.
+
+        La issue define el alcance general del trabajo. Cuando OpenSpec sea
+        obligatorio, los requisitos detallados, escenarios, diseño y tareas
+        se desarrollarán posteriormente en la propuesta OpenSpec.
+
+        No incluyas contraseñas, tokens, secretos ni información sensible.
+
+  - type: dropdown
+    id: work-type
+    attributes:
+      label: Tipo de trabajo
+      description: Selecciona la categoría principal del cambio.
+      options:
+        - Nueva funcionalidad
+        - Corrección de error
+        - Refactorización
+        - Pruebas
+        - Documentación
+        - Configuración o mantenimiento
+        - Investigación técnica
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo
+      description: Explica brevemente qué resultado se quiere conseguir.
+      placeholder: |
+        Permitir que el usuario inicie sesión mediante correo y contraseña.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto
+      description: Describe el problema, necesidad o situación actual.
+      placeholder: |
+        Actualmente la aplicación no permite que los usuarios autenticados
+        accedan mediante sus credenciales.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Alcance
+      description: Indica qué debe formar parte de esta issue.
+      placeholder: |
+        - Crear el endpoint de inicio de sesión.
+        - Validar correo y contraseña.
+        - Devolver la sesión del usuario.
+        - Documentar el endpoint.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Criterios de aceptación
+      description: Escribe condiciones verificables que permitan considerar terminada la issue.
+      placeholder: |
+        - [ ] Las credenciales válidas permiten iniciar sesión.
+        - [ ] Las credenciales incorrectas devuelven el error definido.
+        - [ ] Los datos de entrada se validan.
+        - [ ] Las pruebas relacionadas pasan correctamente.
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Fuera de alcance
+      description: Indica qué no debe implementarse como parte de esta issue.
+      placeholder: |
+        - Registro de usuarios.
+        - Recuperación de contraseña.
+        - Inicio de sesión con proveedores externos.
+
+        Escribe "No aplica" cuando no exista una exclusión relevante.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: openspec
+    attributes:
+      label: Uso de OpenSpec
+      description: El responsable determina si el cambio requiere planificación OpenSpec.
+      options:
+        - OpenSpec obligatorio
+        - OpenSpec no necesario
+    validations:
+      required: true
+
+  - type: input
+    id: openspec-slug
+    attributes:
+      label: Slug sugerido para OpenSpec
+      description: |
+        Escribe únicamente la descripción corta, sin el número de la issue.
+        El nombre completo será NUMERO-ISSUE-slug.
+      placeholder: add-login-endpoint
+    validations:
+      required: false
+
+  - type: textarea
+    id: openspec-reason
+    attributes:
+      label: Motivo de la decisión sobre OpenSpec
+      description: Explica por qué el cambio requiere o no requiere planificación.
+      placeholder: |
+        OpenSpec es obligatorio porque modifica un contrato público y afecta
+        también al repositorio frontend.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: cross-repository
+    attributes:
+      label: Impacto en el otro repositorio
+      description: Indica si el trabajo necesita coordinación entre frontend y backend.
+      options:
+        - No afecta al otro repositorio
+        - Sí, requiere coordinación con el otro repositorio
+    validations:
+      required: true
+
+  - type: input
+    id: related-issue
+    attributes:
+      label: Issue relacionada
+      description: |
+        Usa la referencia completa cuando exista una issue en el otro repositorio.
+      placeholder: Proyecto-Software-I/frontend#15
+    validations:
+      required: false
+
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contrato frontend/backend
+      description: |
+        Completa esta sección cuando el cambio afecte la comunicación entre
+        frontend y backend. Incluye ruta, método, datos y errores.
+      placeholder: |
+        Endpoint:
+        POST /api/auth/login
+
+        Solicitud:
+        - email: string
+        - password: string
+
+        Respuesta exitosa:
+        - status: 200
+        - body: sesión y usuario
+
+        Errores:
+        - 400: datos inválidos
+        - 401: credenciales incorrectas
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencias y bloqueos
+      description: Indica si esta issue depende de otro trabajo o bloquea otra tarea.
+      placeholder: |
+        Depende de Proyecto-Software-I/backend#22.
+
+        Escribe "No aplica" cuando no existan dependencias.
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Riesgos y restricciones
+      description: |
+        Describe riesgos técnicos, de seguridad, datos, compatibilidad,
+        despliegue o mantenimiento.
+      placeholder: |
+        - No modificar el formato actual de errores.
+        - No agregar dependencias nuevas.
+        - Mantener compatibilidad con el contrato existente.
+
+        Escribe "No se identificaron riesgos especiales" cuando corresponda.
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical-notes
+    attributes:
+      label: Notas técnicas
+      description: Agrega información útil para la planificación, sin dictar una implementación innecesariamente.
+      placeholder: |
+        Revisar los patrones existentes del módulo de autenticación.
+        El endpoint debe documentarse mediante Swagger.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmación
+      options:
+        - label: La issue tiene un objetivo y alcance suficientemente definidos.
+          required: true
+        - label: Los criterios de aceptación son verificables.
+          required: true
+        - label: La decisión sobre OpenSpec fue indicada.
+          required: true
+        - label: No se incluyó información sensible.
+          required: true

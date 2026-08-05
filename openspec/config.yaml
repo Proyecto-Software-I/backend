@@ -1,0 +1,64 @@
+schema: spec-driven
+
+context: |
+  Repository: Proyecto-Software-I/backend.
+  Stack: Node.js 24, NestJS, TypeScript strict and npm.
+  API style: REST with the global /api prefix.
+  Architecture: NestJS modules, controllers, services and DTOs.
+  Validation: class-validator, class-transformer and global ValidationPipe.
+  Configuration: ConfigModule and environment variables.
+  Documentation: Swagger/OpenAPI.
+  Frontend repository: Proyecto-Software-I/frontend.
+  GitHub Issues define assignment, scope and acceptance criteria.
+  AGENTS.md defines permanent repository constraints.
+  Pull requests use Rebase and merge.
+  Application code must not be implemented before the planning Draft PR has
+  been reviewed and explicitly approved by the repository maintainer.
+
+rules:
+  proposal:
+    - Include the full GitHub issue reference.
+    - State clearly what is in scope and out of scope.
+    - Identify whether the frontend is affected.
+    - Identify security, database, compatibility and deployment risks.
+    - Do not invent requirements that are absent from the issue.
+    - Do not include implementation code.
+
+  specs:
+    - Write requirements as externally observable behavior.
+    - Use Given, When and Then scenarios.
+    - Include success, validation and failure scenarios.
+    - Preserve existing public behavior unless the issue explicitly changes it.
+    - Document routes, methods, request bodies, responses and HTTP status codes.
+    - Identify contracts that must be coordinated with the frontend.
+
+  design:
+    - Follow existing NestJS module, controller, service and DTO patterns.
+    - Keep business logic outside controllers.
+    - Explain every new dependency.
+    - Include security considerations when applicable.
+    - Include migration and rollback considerations for database changes.
+    - Identify affected Swagger documentation and tests.
+
+  tasks:
+    - Keep tasks small, ordered and independently verifiable.
+    - Include DTO validation when applicable.
+    - Include Swagger updates for changed endpoints.
+    - Include tests for changed behavior.
+    - Include lint, tests and build as the final verification tasks.
+
+operations:
+  apply:
+    guidance:
+      - Modify only files required by the approved change.
+      - Stop if implementation requires changing the approved scope.
+      - Do not disable ESLint or TypeScript rules.
+      - Do not push directly to main.
+      - Do not add dependencies without explicit approval.
+
+  archive:
+    guidance:
+      - Do not archive while tasks remain incomplete.
+      - Confirm that implementation and specifications agree.
+      - Confirm that lint, tests and build passed.
+      - Keep the archived change linked to its GitHub issue.
