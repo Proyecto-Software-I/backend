@@ -20,13 +20,10 @@ describe('AppController (e2e)', () => {
   });
 
   it('/api/health (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/api/health')
-      .expect(200)
-      .expect({
-        status: 'ok',
-        service: 'legacylift-backend',
-      });
+    return request(app.getHttpServer()).get('/api/health').expect(200).expect({
+      status: 'ok',
+      service: 'legacylift-backend',
+    });
   });
 
   afterEach(async () => {
