@@ -1,0 +1,412 @@
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum OrganizationStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CLOSED
+}
+
+enum DeploymentMode {
+  SAAS
+  PRIVATE_CLOUD
+  ON_PREMISE
+  HYBRID
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum RoleScope {
+  ORGANIZATION
+  PROJECT
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum IntegrationProvider {
+  GITHUB
+  GITLAB
+  BITBUCKET
+  AZURE_DEVOPS
+  CUSTOM
+}
+
+enum IntegrationStatus {
+  PENDING
+  ACTIVE
+  ERROR
+  DISABLED
+}
+
+enum InstanceStatus {
+  PROVISIONING
+  ACTIVE
+  DEGRADED
+  OFFLINE
+  RETIRED
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique @db.VarChar(320)
+  displayName     String?    @db.VarChar(160)
+  firstName       String?    @db.VarChar(100)
+  lastName        String?    @db.VarChar(100)
+  avatarUrl       String?
+  locale          String?    @db.VarChar(20)
+  timezone        String?    @db.VarChar(80)
+  status          UserStatus @default(PENDING)
+  emailVerifiedAt DateTime?  @db.Timestamptz(6)
+  lastLoginAt     DateTime?  @db.Timestamptz(6)
+  createdAt       DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @db.Timestamptz(6)
+  deletedAt       DateTime?  @db.Timestamptz(6)
+
+  credential              UserCredential?
+  sessions                UserSession[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  memberships             OrganizationMembership[]
+  invitationsSent         OrganizationInvitation[] @relation("InvitationInviter")
+  apiKeysCreated          ApiKey[]                  @relation("ApiKeyCreator")
+  projectsCreated         Project[]                 @relation("ProjectCreator")
+  analysisRunsRequested   AnalysisRun[]             @relation("AnalysisRunRequester")
+  findingsAssigned        Finding[]                 @relation("FindingAssignee")
+  businessRulesReviewed   BusinessRule[]            @relation("BusinessRuleReviewer")
+  scanSessionsRequested   ScanSession[]             @relation("ScanSessionRequester")
+  testSuitesCreated       TestSuite[]                @relation("TestSuiteCreator")
+  baselinesCreated        BehaviorBaseline[]         @relation("BehaviorBaselineCreator")
+  migrationRunsRequested  MigrationRun[]            @relation("MigrationRunRequester")
+  migrationRunsApproved   MigrationRun[]            @relation("MigrationRunApprover")
+  plansCreated            ModernizationPlan[]       @relation("ModernizationPlanCreator")
+  plansApproved           ModernizationPlan[]       @relation("ModernizationPlanApprover")
+  approvalRequestsCreated ApprovalRequest[]         @relation("ApprovalRequester")
+  approvalDecisions       ApprovalRequest[]         @relation("ApprovalDecisionUser")
+  rollbackRunsRequested   RollbackRun[]             @relation("RollbackRequester")
+  deploymentsRequested    DeploymentRun[]           @relation("DeploymentRequester")
+  reportsGenerated        Report[]                  @relation("ReportGenerator")
+  notifications           Notification[]
+  auditLogs               AuditLog[]                @relation("AuditActor")
+  securityEvents          SecurityEvent[]
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model UserCredential {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @unique @db.Uuid
+  passwordHash      String
+  passwordChangedAt DateTime  @default(now()) @db.Timestamptz(6)
+  failedAttempts    Int       @default(0)
+  lockedUntil       DateTime? @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  organizationId   String?   @db.Uuid
+  tokenHash        String    @unique
+  refreshTokenHash String?   @unique
+  ipAddress        String?   @db.Inet
+  userAgent        String?
+  expiresAt        DateTime  @db.Timestamptz(6)
+  lastSeenAt       DateTime  @default(now()) @db.Timestamptz(6)
+  revokedAt        DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId, expiresAt])
+  @@index([organizationId])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Organization {
+  id                  String             @id @default(uuid()) @db.Uuid
+  slug                String             @unique @db.VarChar(100)
+  name                String             @db.VarChar(200)
+  legalName           String?            @db.VarChar(250)
+  taxId               String?            @db.VarChar(100)
+  status              OrganizationStatus @default(TRIAL)
+  deploymentMode      DeploymentMode     @default(SAAS)
+  dataResidencyRegion String?            @db.VarChar(80)
+  defaultTimezone     String?            @db.VarChar(80)
+  logoUrl             String?
+  settings            Json?
+  securitySettings    Json?
+  createdAt           DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime           @updatedAt @db.Timestamptz(6)
+  deletedAt           DateTime?          @db.Timestamptz(6)
+
+  sessions             UserSession[]
+  memberships         OrganizationMembership[]
+  invitations         OrganizationInvitation[]
+  roles               Role[]
+  apiKeys             ApiKey[]
+  secrets             SecretReference[]
+  integrations        IntegrationConnection[]
+  deploymentInstances DeploymentInstance[]
+  scannerAgents       ScannerAgent[]
+  workerNodes         WorkerNode[]
+  subscriptions       Subscription[]
+  usageEvents         UsageEvent[]
+  storageObjects      StorageObject[]
+  projects            Project[]
+  aiProviders         AIProvider[]
+  promptTemplates     PromptTemplate[]
+  aiRuns              AIRun[]
+  jobs                Job[]
+  reports             Report[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  securityEvents      SecurityEvent[]
+  approvalRequests    ApprovalRequest[]
+
+  @@index([status])
+  @@index([deploymentMode])
+  @@index([deletedAt])
+}
+
+model OrganizationMembership {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  status         MembershipStatus @default(ACTIVE)
+  jobTitle       String?          @db.VarChar(160)
+  joinedAt       DateTime?        @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  roles           MembershipRole[]
+  projectAccesses ProjectAccess[]
+  assignedApprovals ApprovalRequest[] @relation("ApprovalAssignee")
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+}
+
+model OrganizationInvitation {
+  id              String           @id @default(uuid()) @db.Uuid
+  organizationId  String           @db.Uuid
+  email           String           @db.VarChar(320)
+  tokenHash       String           @unique
+  status          InvitationStatus @default(PENDING)
+  invitedByUserId String?          @db.Uuid
+  proposedRoleId  String?          @db.Uuid
+  expiresAt       DateTime         @db.Timestamptz(6)
+  acceptedAt      DateTime?        @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitationInviter", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  proposedRole Role?        @relation("InvitationProposedRole", fields: [proposedRoleId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, email])
+  @@index([status, expiresAt])
+}
+
+model Role {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  scope          RoleScope
+  key            String    @db.VarChar(100)
+  name           String    @db.VarChar(120)
+  description    String?
+  isSystem       Boolean   @default(false)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  permissions     RolePermission[]
+  memberships     MembershipRole[]
+  projectAccesses ProjectAccess[]
+  invitations     OrganizationInvitation[] @relation("InvitationProposedRole")
+
+  @@unique([organizationId, scope, key])
+  @@index([organizationId, scope])
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique @db.VarChar(150)
+  description String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model MembershipRole {
+  membershipId String @db.Uuid
+  roleId       String @db.Uuid
+
+  membership OrganizationMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role                   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+}
+
+model ProjectAccess {
+  id           String   @id @default(uuid()) @db.Uuid
+  projectId    String   @db.Uuid
+  membershipId String   @db.Uuid
+  roleId       String   @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  project    Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  membership OrganizationMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role                   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, membershipId])
+  @@index([membershipId])
+}
+
+model ApiKey {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  name            String       @db.VarChar(120)
+  prefix          String       @db.VarChar(32)
+  keyHash         String       @unique
+  status          ApiKeyStatus @default(ACTIVE)
+  scopes          Json?
+  projectId       String?      @db.Uuid
+  createdByUserId String?      @db.Uuid
+  lastUsedAt      DateTime?    @db.Timestamptz(6)
+  expiresAt       DateTime?    @db.Timestamptz(6)
+  revokedAt       DateTime?    @db.Timestamptz(6)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("ApiKeyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([projectId])
+}
+
+model SecretReference {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String    @db.VarChar(150)
+  provider       String    @db.VarChar(80)
+  externalRef    String
+  metadata       Json?
+  rotatedAt      DateTime? @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization            Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  integrationConnections  IntegrationConnection[]
+  systemEnvironments      SystemEnvironment[]
+  sourceConnections       SourceConnection[]
+  repositories            Repository[]
+  aiProviders             AIProvider[]
+  encryptedStorageObjects StorageObject[]          @relation("StorageEncryptionKey")
+
+  @@unique([organizationId, name])
+}
+
+model IntegrationConnection {
+  id                String            @id @default(uuid()) @db.Uuid
+  organizationId    String            @db.Uuid
+  provider          IntegrationProvider
+  name              String            @db.VarChar(150)
+  status            IntegrationStatus @default(PENDING)
+  externalAccountId String?
+  secretRefId       String?           @db.Uuid
+  config            Json?
+  lastSyncAt        DateTime?         @db.Timestamptz(6)
+  lastError         String?
+  createdAt         DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(6)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  secret       SecretReference? @relation(fields: [secretRefId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, provider, status])
+}
+
+model DeploymentInstance {
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @db.Uuid
+  name            String         @db.VarChar(150)
+  mode            DeploymentMode
+  status          InstanceStatus @default(PROVISIONING)
+  region          String?        @db.VarChar(100)
+  version         String?        @db.VarChar(80)
+  instanceKey     String         @unique @db.VarChar(150)
+  metadata        Json?
+  lastHeartbeatAt DateTime?      @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  scannerAgents ScannerAgent[]
+  workerNodes   WorkerNode[]
+
+  @@index([organizationId, status])
+}

@@ -1,0 +1,560 @@
+enum TestSuiteType {
+  BASELINE
+  UNIT
+  INTEGRATION
+  API
+  CONTRACT
+  REGRESSION
+  BATCH
+  DATABASE
+  PERFORMANCE
+  SECURITY
+  CUSTOM
+}
+
+enum TestOrigin {
+  EXISTING
+  AI_GENERATED
+  RECORDED
+  MANUAL
+}
+
+enum TestCaseStatus {
+  ACTIVE
+  DISABLED
+  QUARANTINED
+}
+
+enum BaselineStatus {
+  CAPTURING
+  READY
+  PARTIAL
+  FAILED
+  SUPERSEDED
+}
+
+enum MigrationStatus {
+  QUEUED
+  PREPARING
+  GENERATING_TESTS
+  TRANSFORMING
+  COMPILING
+  TESTING
+  COMPARING
+  REVIEW_REQUIRED
+  APPROVED
+  REJECTED
+  FAILED
+  ROLLED_BACK
+  CANCELED
+}
+
+enum MigrationUnitStatus {
+  PENDING
+  IN_PROGRESS
+  GENERATED
+  VALIDATED
+  FAILED
+  SKIPPED
+}
+
+enum ChangeType {
+  CREATE
+  MODIFY
+  DELETE
+  RENAME
+  MOVE
+}
+
+enum ValidationType {
+  PRE_MIGRATION
+  POST_MIGRATION
+  FULL
+  DUAL_RUN
+  MANUAL_REVIEW
+}
+
+enum ValidationCheckType {
+  COMPILE
+  TYPECHECK
+  LINT
+  UNIT_TEST
+  INTEGRATION_TEST
+  API_CONTRACT
+  BUSINESS_RULE
+  DATABASE_DIFF
+  FILE_DIFF
+  BATCH_OUTPUT
+  PERFORMANCE
+  SECURITY
+  DEPENDENCY
+  MANUAL
+  CUSTOM
+}
+
+enum CheckStatus {
+  PENDING
+  PASS
+  WARN
+  FAIL
+  SKIPPED
+}
+
+enum TestRunStatus {
+  QUEUED
+  RUNNING
+  PASSED
+  FAILED
+  PARTIAL
+  CANCELED
+}
+
+enum TestResultStatus {
+  PASS
+  FAIL
+  ERROR
+  SKIPPED
+}
+
+enum ComparisonStatus {
+  EQUIVALENT
+  WITHIN_TOLERANCE
+  DIFFERENT
+  ERROR
+  NOT_COMPARABLE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+enum RollbackStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum DeploymentStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  ROLLED_BACK
+}
+
+model TestSuite {
+  id              String        @id @default(uuid()) @db.Uuid
+  projectId       String        @db.Uuid
+  systemId        String        @db.Uuid
+  snapshotId      String?       @db.Uuid
+  name            String        @db.VarChar(200)
+  type            TestSuiteType
+  description     String?
+  framework       String?       @db.VarChar(120)
+  configuration   Json?
+  createdByUserId String?       @db.Uuid
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(6)
+
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  system    LegacySystem       @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot  SourceSnapshot?    @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  createdBy User?              @relation("TestSuiteCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  testCases TestCase[]
+  baselines BehaviorBaseline[]
+  testRuns  TestRun[]
+
+  @@index([systemId, type])
+  @@index([snapshotId])
+}
+
+model TestCase {
+  id                      String         @id @default(uuid()) @db.Uuid
+  suiteId                 String         @db.Uuid
+  stableKey               String         @db.VarChar(300)
+  name                    String         @db.VarChar(250)
+  origin                  TestOrigin
+  status                  TestCaseStatus @default(ACTIVE)
+  targetType              String?        @db.VarChar(80)
+  targetId                String?        @db.Uuid
+  inputDefinition         Json?
+  expectedDefinition      Json?
+  testCodeStorageObjectId String?        @db.Uuid
+  testCodeHash            String?        @db.VarChar(128)
+  tags                    Json?
+  createdByAiRunId        String?        @db.Uuid
+  createdAt               DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime       @updatedAt @db.Timestamptz(6)
+
+  suite                TestSuite             @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  testCodeObject       StorageObject?        @relation("TestCaseCodeStorage", fields: [testCodeStorageObjectId], references: [id], onDelete: SetNull)
+  createdByAi          AIRun?                @relation("TestCaseAiGenerator", fields: [createdByAiRunId], references: [id], onDelete: SetNull)
+  baselineObservations BaselineObservation[]
+  results              TestResult[]
+  comparisons          BehaviorComparison[]
+
+  @@unique([suiteId, stableKey])
+  @@index([suiteId, status])
+}
+
+model BehaviorBaseline {
+  id              String         @id @default(uuid()) @db.Uuid
+  systemId        String         @db.Uuid
+  snapshotId      String         @db.Uuid
+  testSuiteId     String?        @db.Uuid
+  name            String         @db.VarChar(200)
+  status          BaselineStatus @default(CAPTURING)
+  coverageScore   Decimal?       @db.Decimal(5, 2)
+  environmentId   String?        @db.Uuid
+  captureConfig   Json?
+  summary         Json?
+  createdByUserId String?        @db.Uuid
+  capturedAt      DateTime?      @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+
+  system       LegacySystem          @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot     SourceSnapshot        @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  testSuite    TestSuite?            @relation(fields: [testSuiteId], references: [id], onDelete: SetNull)
+  environment  SystemEnvironment?    @relation("BehaviorBaselineEnvironment", fields: [environmentId], references: [id], onDelete: SetNull)
+  createdBy    User?                 @relation("BehaviorBaselineCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  observations BaselineObservation[]
+  testRuns     TestRun[]
+
+  @@index([systemId, status])
+  @@index([snapshotId])
+}
+
+model BaselineObservation {
+  id                      String   @id @default(uuid()) @db.Uuid
+  baselineId              String   @db.Uuid
+  testCaseId              String?  @db.Uuid
+  sequence                Int
+  observationType         String   @db.VarChar(100)
+  input                   Json?
+  expectedOutput          Json?
+  expectedStatus          String?  @db.VarChar(80)
+  stateBeforeHash         String?  @db.VarChar(128)
+  stateAfterHash          String?  @db.VarChar(128)
+  artifactStorageObjectId String?  @db.Uuid
+  metadata                Json?
+  createdAt               DateTime @default(now()) @db.Timestamptz(6)
+
+  baseline       BehaviorBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  testCase       TestCase?        @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
+  artifactObject StorageObject?   @relation("BaselineObservationArtifact", fields: [artifactStorageObjectId], references: [id], onDelete: SetNull)
+
+  @@unique([baselineId, sequence])
+  @@index([testCaseId])
+}
+
+model MigrationRun {
+  id                     String          @id @default(uuid()) @db.Uuid
+  waveId                 String          @db.Uuid
+  systemId               String          @db.Uuid
+  sourceSnapshotId       String          @db.Uuid
+  repositoryId           String?         @db.Uuid
+  migrationPackVersionId String?         @db.Uuid
+  status                 MigrationStatus @default(QUEUED)
+  sourceBranch           String?         @db.VarChar(255)
+  targetBranch           String?         @db.VarChar(255)
+  sourceRevision         String?         @db.VarChar(120)
+  targetRevision         String?         @db.VarChar(120)
+  targetStack            Json?
+  configuration          Json?
+  confidenceScore        Decimal?        @db.Decimal(5, 2)
+  requestedByUserId      String?         @db.Uuid
+  approvedByUserId       String?         @db.Uuid
+  approvedAt             DateTime?       @db.Timestamptz(6)
+  error                  String?
+  startedAt              DateTime?       @db.Timestamptz(6)
+  completedAt            DateTime?       @db.Timestamptz(6)
+  createdAt              DateTime        @default(now()) @db.Timestamptz(6)
+
+  wave                 MigrationWave         @relation(fields: [waveId], references: [id], onDelete: Cascade)
+  system               LegacySystem          @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  sourceSnapshot       SourceSnapshot        @relation(fields: [sourceSnapshotId], references: [id], onDelete: Restrict)
+  repository           Repository?           @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  migrationPackVersion MigrationPackVersion? @relation(fields: [migrationPackVersionId], references: [id], onDelete: SetNull)
+  requestedBy          User?                 @relation("MigrationRunRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  approvedBy           User?                 @relation("MigrationRunApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  aiRuns               AIRun[]
+  units                MigrationUnit[]
+  codeChanges          CodeChange[]
+  pullRequest          PullRequest?
+  validations          ValidationRun[]
+  testRuns             TestRun[]
+  rollbacks            RollbackRun[]
+  deployments          DeploymentRun[]
+
+  @@index([waveId, status])
+  @@index([systemId, createdAt])
+  @@index([sourceSnapshotId])
+}
+
+model MigrationUnit {
+  id                    String                @id @default(uuid()) @db.Uuid
+  migrationRunId        String                @db.Uuid
+  sourceFileId          String?               @db.Uuid
+  sourceNodeId          String?               @db.Uuid
+  unitType              String                @db.VarChar(100)
+  stableKey             String                @db.VarChar(300)
+  name                  String                @db.VarChar(220)
+  status                MigrationUnitStatus   @default(PENDING)
+  strategy              ModernizationStrategy
+  targetLanguage        String?               @db.VarChar(100)
+  targetFramework       String?               @db.VarChar(120)
+  outputStorageObjectId String?               @db.Uuid
+  summary               Json?
+  error                 String?
+  startedAt             DateTime?             @db.Timestamptz(6)
+  completedAt           DateTime?             @db.Timestamptz(6)
+
+  migrationRun MigrationRun   @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  sourceFile   SourceFile?    @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+  sourceNode   KnowledgeNode? @relation("MigrationUnitSourceNode", fields: [sourceNodeId], references: [id], onDelete: SetNull)
+  outputObject StorageObject? @relation("MigrationUnitOutput", fields: [outputStorageObjectId], references: [id], onDelete: SetNull)
+  codeChanges  CodeChange[]
+
+  @@unique([migrationRunId, stableKey])
+  @@index([migrationRunId, status])
+}
+
+model CodeChange {
+  id                      String     @id @default(uuid()) @db.Uuid
+  migrationRunId          String     @db.Uuid
+  migrationUnitId         String?    @db.Uuid
+  sourceFileId            String?    @db.Uuid
+  changeType              ChangeType
+  originalPath            String?
+  targetPath              String?
+  originalStorageObjectId String?    @db.Uuid
+  migratedStorageObjectId String?    @db.Uuid
+  diffStorageObjectId     String?    @db.Uuid
+  originalChecksum        String?    @db.VarChar(128)
+  migratedChecksum        String?    @db.VarChar(128)
+  additions               Int?
+  deletions               Int?
+  metadata                Json?
+  createdAt               DateTime   @default(now()) @db.Timestamptz(6)
+
+  migrationRun    MigrationRun   @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  migrationUnit   MigrationUnit? @relation(fields: [migrationUnitId], references: [id], onDelete: SetNull)
+  sourceFile      SourceFile?    @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+  originalObject  StorageObject? @relation("CodeChangeOriginal", fields: [originalStorageObjectId], references: [id], onDelete: SetNull)
+  migratedObject  StorageObject? @relation("CodeChangeMigrated", fields: [migratedStorageObjectId], references: [id], onDelete: SetNull)
+  diffObject      StorageObject? @relation("CodeChangeDiff", fields: [diffStorageObjectId], references: [id], onDelete: SetNull)
+
+  @@index([migrationRunId, changeType])
+  @@index([sourceFileId])
+}
+
+model PullRequest {
+  id             String    @id @default(uuid()) @db.Uuid
+  migrationRunId String    @unique @db.Uuid
+  repositoryId   String    @db.Uuid
+  externalId     String    @db.VarChar(150)
+  number         Int?
+  title          String    @db.VarChar(250)
+  url            String?
+  sourceBranch   String?   @db.VarChar(255)
+  targetBranch   String?   @db.VarChar(255)
+  status         String?   @db.VarChar(60)
+  mergedAt       DateTime? @db.Timestamptz(6)
+  metadata       Json?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  migrationRun MigrationRun @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  repository   Repository   @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, externalId])
+}
+
+model ValidationRun {
+  id              String         @id @default(uuid()) @db.Uuid
+  migrationRunId  String         @db.Uuid
+  type            ValidationType
+  status          RunStatus      @default(QUEUED)
+  environmentId   String?        @db.Uuid
+  confidenceScore Decimal?       @db.Decimal(5, 2)
+  summary         Json?
+  startedAt       DateTime?      @db.Timestamptz(6)
+  completedAt     DateTime?      @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+
+  migrationRun MigrationRun         @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  environment  SystemEnvironment?   @relation("ValidationRunEnvironment", fields: [environmentId], references: [id], onDelete: SetNull)
+  checks       ValidationCheck[]
+  testRuns     TestRun[]
+  comparisons  BehaviorComparison[]
+
+  @@index([migrationRunId, type, status])
+}
+
+model ValidationCheck {
+  id                      String              @id @default(uuid()) @db.Uuid
+  validationRunId         String              @db.Uuid
+  type                    ValidationCheckType
+  name                    String              @db.VarChar(220)
+  status                  CheckStatus         @default(PENDING)
+  score                   Decimal?            @db.Decimal(5, 2)
+  threshold               Json?
+  details                 Json?
+  evidenceStorageObjectId String?             @db.Uuid
+  durationMs              Int?
+  error                   String?
+  createdAt               DateTime            @default(now()) @db.Timestamptz(6)
+
+  validationRun ValidationRun  @relation(fields: [validationRunId], references: [id], onDelete: Cascade)
+  evidenceObject StorageObject? @relation("ValidationCheckEvidence", fields: [evidenceStorageObjectId], references: [id], onDelete: SetNull)
+
+  @@index([validationRunId, status])
+  @@index([type])
+}
+
+model TestRun {
+  id                  String        @id @default(uuid()) @db.Uuid
+  testSuiteId         String        @db.Uuid
+  baselineId          String?       @db.Uuid
+  migrationRunId      String?       @db.Uuid
+  validationRunId     String?       @db.Uuid
+  status              TestRunStatus @default(QUEUED)
+  environmentId       String?       @db.Uuid
+  total               Int           @default(0)
+  passed              Int           @default(0)
+  failed              Int           @default(0)
+  skipped             Int           @default(0)
+  durationMs          Int?
+  logsStorageObjectId String?       @db.Uuid
+  startedAt           DateTime?     @db.Timestamptz(6)
+  completedAt         DateTime?     @db.Timestamptz(6)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(6)
+
+  testSuite     TestSuite         @relation(fields: [testSuiteId], references: [id], onDelete: Cascade)
+  baseline      BehaviorBaseline? @relation(fields: [baselineId], references: [id], onDelete: SetNull)
+  migrationRun  MigrationRun?     @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  validationRun ValidationRun?    @relation(fields: [validationRunId], references: [id], onDelete: Cascade)
+  environment   SystemEnvironment? @relation("TestRunEnvironment", fields: [environmentId], references: [id], onDelete: SetNull)
+  logsObject    StorageObject?     @relation("TestRunLogs", fields: [logsStorageObjectId], references: [id], onDelete: SetNull)
+  results       TestResult[]
+
+  @@index([testSuiteId, status])
+  @@index([migrationRunId])
+  @@index([validationRunId])
+}
+
+model TestResult {
+  id                      String           @id @default(uuid()) @db.Uuid
+  testRunId               String           @db.Uuid
+  testCaseId              String           @db.Uuid
+  status                  TestResultStatus
+  durationMs              Int?
+  expected                Json?
+  actual                  Json?
+  error                   String?
+  artifactStorageObjectId String?          @db.Uuid
+  createdAt               DateTime         @default(now()) @db.Timestamptz(6)
+
+  testRun        TestRun        @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  testCase       TestCase       @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  artifactObject StorageObject? @relation("TestResultArtifact", fields: [artifactStorageObjectId], references: [id], onDelete: SetNull)
+
+  @@unique([testRunId, testCaseId])
+  @@index([testCaseId, status])
+}
+
+model BehaviorComparison {
+  id                      String           @id @default(uuid()) @db.Uuid
+  validationRunId         String           @db.Uuid
+  testCaseId              String?          @db.Uuid
+  category                String           @db.VarChar(100)
+  status                  ComparisonStatus
+  similarityScore         Decimal?         @db.Decimal(5, 2)
+  tolerance               Json?
+  original                Json?
+  modernized              Json?
+  difference              Json?
+  artifactStorageObjectId String?          @db.Uuid
+  createdAt               DateTime         @default(now()) @db.Timestamptz(6)
+
+  validationRun ValidationRun  @relation(fields: [validationRunId], references: [id], onDelete: Cascade)
+  testCase      TestCase?      @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
+  artifactObject StorageObject? @relation("BehaviorComparisonArtifact", fields: [artifactStorageObjectId], references: [id], onDelete: SetNull)
+
+  @@index([validationRunId, status])
+}
+
+model ApprovalRequest {
+  id                     String         @id @default(uuid()) @db.Uuid
+  organizationId         String         @db.Uuid
+  projectId              String?        @db.Uuid
+  subjectType            String         @db.VarChar(80)
+  subjectId              String         @db.Uuid
+  status                 ApprovalStatus @default(PENDING)
+  requestedByUserId      String?        @db.Uuid
+  assignedToMembershipId String?        @db.Uuid
+  decisionByUserId       String?        @db.Uuid
+  requestMessage         String?
+  decisionComment        String?
+  decidedAt              DateTime?      @db.Timestamptz(6)
+  createdAt              DateTime       @default(now()) @db.Timestamptz(6)
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  project      Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  requestedBy  User?                   @relation("ApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  assignedTo   OrganizationMembership? @relation("ApprovalAssignee", fields: [assignedToMembershipId], references: [id], onDelete: SetNull)
+  decisionBy   User?                   @relation("ApprovalDecisionUser", fields: [decisionByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([subjectType, subjectId])
+  @@index([projectId])
+}
+
+model RollbackRun {
+  id                String         @id @default(uuid()) @db.Uuid
+  migrationRunId    String         @db.Uuid
+  status            RollbackStatus @default(QUEUED)
+  strategy          String?        @db.VarChar(100)
+  requestedByUserId String?        @db.Uuid
+  fromRevision      String?
+  toRevision        String?
+  reason            String?
+  error             String?
+  startedAt         DateTime?      @db.Timestamptz(6)
+  completedAt       DateTime?      @db.Timestamptz(6)
+  createdAt         DateTime       @default(now()) @db.Timestamptz(6)
+
+  migrationRun MigrationRun @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  requestedBy  User?        @relation("RollbackRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([migrationRunId, status])
+}
+
+model DeploymentRun {
+  id                      String           @id @default(uuid()) @db.Uuid
+  migrationRunId          String           @db.Uuid
+  environmentId           String           @db.Uuid
+  status                  DeploymentStatus @default(QUEUED)
+  version                 String?          @db.VarChar(100)
+  commitSha               String?          @db.VarChar(120)
+  artifactStorageObjectId String?          @db.Uuid
+  requestedByUserId       String?          @db.Uuid
+  logsStorageObjectId     String?          @db.Uuid
+  error                   String?
+  startedAt               DateTime?        @db.Timestamptz(6)
+  completedAt             DateTime?        @db.Timestamptz(6)
+  createdAt               DateTime         @default(now()) @db.Timestamptz(6)
+
+  migrationRun  MigrationRun      @relation(fields: [migrationRunId], references: [id], onDelete: Cascade)
+  environment   SystemEnvironment @relation(fields: [environmentId], references: [id], onDelete: Restrict)
+  artifactObject StorageObject?   @relation("DeploymentArtifact", fields: [artifactStorageObjectId], references: [id], onDelete: SetNull)
+  logsObject     StorageObject?   @relation("DeploymentLogs", fields: [logsStorageObjectId], references: [id], onDelete: SetNull)
+  requestedBy    User?            @relation("DeploymentRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([migrationRunId, status])
+  @@index([environmentId, createdAt])
+}

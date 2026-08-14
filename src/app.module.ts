@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import * as Joi from 'joi';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -13,14 +13,13 @@ import { AppService } from './app.service';
         NODE_ENV: Joi.string()
           .valid('development', 'test', 'production')
           .default('development'),
-
-        PORT: Joi.number().port().default(3000),
-
-        FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+        PORT: Joi.number().port().default(3001),
+        FRONTEND_URL: Joi.string().uri().default('http://localhost:3000'),
+        DATABASE_URL: Joi.string().required(),
       }),
     }),
+    PrismaModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

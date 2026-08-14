@@ -1,0 +1,158 @@
+enum AIProviderType {
+  OLLAMA
+  VLLM
+  OPENAI_COMPATIBLE
+  AZURE_OPENAI
+  ANTHROPIC
+  GOOGLE
+  CUSTOM
+}
+
+enum AIProviderStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+}
+
+enum DataPrivacyMode {
+  LOCAL_ONLY
+  PRIVATE_TENANT
+  EXTERNAL_ALLOWED
+}
+
+enum AIRunPurpose {
+  CODE_UNDERSTANDING
+  BUSINESS_RULE_EXTRACTION
+  TEST_GENERATION
+  MIGRATION
+  REFACTOR
+  EXPLANATION
+  MODERNIZATION_PLAN
+  REPORT_GENERATION
+  EMBEDDING
+  OTHER
+}
+
+enum AIRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model AIProvider {
+  id                String           @id @default(uuid()) @db.Uuid
+  organizationId    String           @db.Uuid
+  type              AIProviderType
+  name              String           @db.VarChar(160)
+  status            AIProviderStatus @default(ACTIVE)
+  baseUrl           String?
+  secretRefId       String?          @db.Uuid
+  privacyMode       DataPrivacyMode  @default(LOCAL_ONLY)
+  configuration     Json?
+  lastHealthCheckAt DateTime?        @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(6)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  secret       SecretReference? @relation(fields: [secretRefId], references: [id], onDelete: SetNull)
+  models       AIModel[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model AIModel {
+  id                         String   @id @default(uuid()) @db.Uuid
+  providerId                 String   @db.Uuid
+  modelKey                   String   @db.VarChar(200)
+  displayName                String   @db.VarChar(180)
+  version                    String   @default("default") @db.VarChar(100)
+  contextWindow              Int?
+  maxOutputTokens            Int?
+  capabilities               Json?
+  inputCostPerMillionTokens  Decimal? @db.Decimal(20, 8)
+  outputCostPerMillionTokens Decimal? @db.Decimal(20, 8)
+  isDefault                  Boolean  @default(false)
+  isActive                   Boolean  @default(true)
+  metadata                   Json?
+  createdAt                  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(6)
+
+  provider AIProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  runs     AIRun[]
+
+  @@unique([providerId, modelKey, version])
+  @@index([providerId, isActive])
+}
+
+model PromptTemplate {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String?      @db.Uuid
+  scopeKey       String       @db.VarChar(80)
+  key            String       @db.VarChar(150)
+  version        String       @db.VarChar(50)
+  name           String       @db.VarChar(180)
+  purpose        AIRunPurpose
+  systemPrompt   String?
+  userTemplate   String?
+  schema         Json?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(6)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  runs         AIRun[]
+
+  @@unique([scopeKey, key, version])
+  @@index([purpose, isActive])
+}
+
+model AIRun {
+  id                      String          @id @default(uuid()) @db.Uuid
+  organizationId          String          @db.Uuid
+  modelId                 String          @db.Uuid
+  promptTemplateId        String?         @db.Uuid
+  purpose                 AIRunPurpose
+  status                  AIRunStatus     @default(QUEUED)
+  projectId               String?         @db.Uuid
+  systemId                String?         @db.Uuid
+  analysisRunId           String?         @db.Uuid
+  migrationRunId          String?         @db.Uuid
+  jobId                   String?         @db.Uuid
+  privacyMode             DataPrivacyMode
+  requestHash             String?         @db.VarChar(128)
+  responseHash            String?         @db.VarChar(128)
+  requestStorageObjectId  String?         @db.Uuid
+  responseStorageObjectId String?         @db.Uuid
+  inputTokens             Int?
+  outputTokens            Int?
+  cost                    Decimal?        @db.Decimal(20, 8)
+  currency                String?         @db.VarChar(3)
+  temperature             Decimal?        @db.Decimal(4, 3)
+  seed                    Int?
+  latencyMs               Int?
+  error                   String?
+  startedAt               DateTime?       @db.Timestamptz(6)
+  completedAt             DateTime?       @db.Timestamptz(6)
+  createdAt               DateTime        @default(now()) @db.Timestamptz(6)
+
+  organization          Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  model                 AIModel         @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  promptTemplate        PromptTemplate? @relation(fields: [promptTemplateId], references: [id], onDelete: SetNull)
+  project               Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  system                LegacySystem?   @relation(fields: [systemId], references: [id], onDelete: SetNull)
+  analysisRun           AnalysisRun?    @relation(fields: [analysisRunId], references: [id], onDelete: SetNull)
+  migrationRun          MigrationRun?   @relation(fields: [migrationRunId], references: [id], onDelete: SetNull)
+  job                   Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  requestStorageObject  StorageObject?  @relation("AIRunRequestStorage", fields: [requestStorageObjectId], references: [id], onDelete: SetNull)
+  responseStorageObject StorageObject?  @relation("AIRunResponseStorage", fields: [responseStorageObjectId], references: [id], onDelete: SetNull)
+  generatedTestCases    TestCase[]      @relation("TestCaseAiGenerator")
+  generatedReports      Report[]        @relation("ReportAiRun")
+
+  @@index([organizationId, purpose, createdAt])
+  @@index([projectId])
+  @@index([systemId])
+  @@index([analysisRunId])
+  @@index([migrationRunId])
+}

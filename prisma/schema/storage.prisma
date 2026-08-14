@@ -1,0 +1,58 @@
+enum StorageProvider {
+  S3
+  MINIO
+  AZURE_BLOB
+  GCS
+  LOCAL
+}
+
+enum DataClassification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+model StorageObject {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @db.Uuid
+  provider           StorageProvider
+  bucket             String?            @db.VarChar(255)
+  objectKey          String
+  versionId          String?            @db.VarChar(255)
+  contentType        String?            @db.VarChar(150)
+  sizeBytes          BigInt
+  checksumSha256     String?            @db.VarChar(64)
+  classification     DataClassification @default(CONFIDENTIAL)
+  encrypted          Boolean            @default(true)
+  encryptionKeyRefId String?            @db.Uuid
+  retentionUntil     DateTime?          @db.Timestamptz(6)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(6)
+  deletedAt          DateTime?          @db.Timestamptz(6)
+
+  organization           Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  encryptionKey          SecretReference? @relation("StorageEncryptionKey", fields: [encryptionKeyRefId], references: [id], onDelete: SetNull)
+  snapshotPackages       SourceSnapshot[] @relation("SnapshotPackage")
+  snapshotManifests      SourceSnapshot[] @relation("SnapshotManifest")
+  sourceFiles            SourceFile[]     @relation("SourceFileStorage")
+  migrationPackRuleSets  MigrationPackVersion[] @relation("MigrationPackRuleSet")
+  aiRequests             AIRun[]          @relation("AIRunRequestStorage")
+  aiResponses            AIRun[]          @relation("AIRunResponseStorage")
+  testCaseCodes          TestCase[]       @relation("TestCaseCodeStorage")
+  baselineArtifacts      BaselineObservation[] @relation("BaselineObservationArtifact")
+  migrationUnitOutputs   MigrationUnit[]  @relation("MigrationUnitOutput")
+  codeChangeOriginals    CodeChange[]     @relation("CodeChangeOriginal")
+  codeChangeMigrated     CodeChange[]     @relation("CodeChangeMigrated")
+  codeChangeDiffs        CodeChange[]     @relation("CodeChangeDiff")
+  validationEvidence     ValidationCheck[] @relation("ValidationCheckEvidence")
+  testRunLogs            TestRun[]        @relation("TestRunLogs")
+  testResultArtifacts    TestResult[]     @relation("TestResultArtifact")
+  comparisonArtifacts    BehaviorComparison[] @relation("BehaviorComparisonArtifact")
+  deploymentArtifacts    DeploymentRun[]  @relation("DeploymentArtifact")
+  deploymentLogs         DeploymentRun[]  @relation("DeploymentLogs")
+  reportArtifacts        Report[]         @relation("ReportArtifact")
+
+  @@index([organizationId, provider, objectKey, versionId])
+  @@index([organizationId, classification])
+  @@index([checksumSha256])
+}

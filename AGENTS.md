@@ -1,682 +1,284 @@
-# Instrucciones para agentes de IA
+# AGENTS.md — LegacyLift AI Backend
 
-## Contexto del repositorio
+Este archivo contiene las reglas técnicas permanentes para desarrolladores y agentes de IA que trabajen en este repositorio. El flujo humano de GitHub/OpenSpec está en [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
 
-Este repositorio contiene el backend de `Proyecto-Software-I`.
+## 1. Producto y stack
 
-Tecnologías principales:
+LegacyLift AI es una plataforma B2B multi-tenant para descubrir, analizar, planificar y ejecutar modernizaciones verificables de sistemas legados.
 
-* Node.js 24 LTS.
-* NestJS.
-* TypeScript estricto.
-* npm.
-* Swagger/OpenAPI.
-* `class-validator`.
-* `class-transformer`.
-* Configuración mediante variables de entorno.
+Stack base actual:
 
-El frontend se encuentra en un repositorio separado:
+- Node.js 24
+- NestJS + TypeScript strict
+- PostgreSQL
+- Prisma ORM
+- REST bajo prefijo `/api`
+- Swagger/OpenAPI
+- Joi para configuración
+- `class-validator` / `class-transformer` para DTOs
+- PostgreSQL local instalado directamente en Windows durante desarrollo
+- OpenSpec para cambios funcionales/arquitectónicos
 
-```text
-Proyecto-Software-I/frontend
-```
+No introducir Redis, colas, object-storage SDKs, proveedores de IA, auth providers u otras dependencias hasta que una issue/OpenSpec concreta las necesite.
 
-## Jerarquía de fuentes de verdad
+## 2. Arquitectura NestJS
 
-Utiliza esta jerarquía para resolver qué debes implementar:
+- Organizar el código por dominio/feature, no por tipo global de archivo.
+- Controllers: HTTP, DTOs, status codes y delegación. Sin reglas de negocio.
+- Services: reglas de negocio, autorización de recursos y orquestación.
+- Prisma: acceso persistente mediante `PrismaService`; no crear conexiones PostgreSQL ad hoc.
+- DTOs: todo input externo debe validarse.
+- Swagger: documentar endpoints públicos y DTOs.
+- Errores: usar excepciones HTTP de NestJS en el límite HTTP; no filtrar información interna.
+- No crear un módulo NestJS solamente porque exista una tabla. El módulo se crea cuando una feature entra en alcance.
 
-1. La GitHub Issue define la asignación, el alcance y los criterios de aceptación.
-2. Los artefactos OpenSpec definen los requisitos detallados, escenarios, diseño y tareas aprobadas.
-3. Este archivo define las reglas permanentes del repositorio.
-4. `.github/CONTRIBUTING.md` define el flujo general de contribución.
-5. El código y las pruebas existentes muestran los patrones técnicos vigentes.
-6. Swagger/OpenAPI describe el contrato HTTP actualmente implementado.
+## 3. Prisma y datos
 
-No inventes requisitos que no aparezcan en estas fuentes.
+### Fuente de verdad
 
-Cuando exista una contradicción:
-
-* No elijas una interpretación por tu cuenta.
-* Detén la implementación.
-* Explica la contradicción.
-* Solicita una decisión al responsable del repositorio.
-
-## Preparación obligatoria
-
-Antes de modificar archivos:
-
-1. Lee la issue asignada completa.
-
-2. Lee los artefactos OpenSpec del cambio, cuando sean obligatorios.
-
-3. Lee `.github/CONTRIBUTING.md`.
-
-4. Revisa el código y las pruebas relacionados.
-
-5. Identifica los criterios de aceptación.
-
-6. Comprueba la rama actual:
-
-   ```bash
-   git branch --show-current
-   ```
-
-7. Comprueba el estado del repositorio:
-
-   ```bash
-   git status
-   ```
-
-8. Presenta un plan breve que indique:
-
-   * Qué entendiste de la issue.
-   * Qué comportamiento debe cambiar.
-   * Qué comportamiento debe mantenerse.
-   * Qué archivos o áreas esperas modificar.
-   * Qué contratos pueden verse afectados.
-   * Qué pruebas y validaciones ejecutarás.
-   * Qué dudas o suposiciones existen.
-
-No comiences una reestructuración amplia sin justificarla y sin que forme parte del plan aprobado.
-
-# Flujo obligatorio con OpenSpec
-
-## Cuándo es obligatorio
-
-OpenSpec es obligatorio para:
-
-* Funcionalidades nuevas.
-* Correcciones que cambien el comportamiento observable.
-* Cambios en contratos públicos.
-* Cambios que afecten frontend y backend.
-* Autenticación o autorización.
-* Cambios de base de datos.
-* Dependencias nuevas.
-* Cambios de arquitectura.
-* Refactorizaciones importantes.
-* Cambios de configuración con impacto funcional.
-* Modificaciones de seguridad.
-* Cambios expresamente marcados como OpenSpec en la issue.
-
-OpenSpec puede omitirse únicamente cuando la issue lo indique expresamente, por ejemplo:
-
-* Correcciones tipográficas.
-* Cambios pequeños de documentación.
-* Ajustes locales sin cambio de comportamiento.
-* Mantenimiento mecánico claramente acotado.
-
-No decidas por tu cuenta que OpenSpec no es necesario.
-
-## Convención de nombres
-
-El nombre del cambio OpenSpec debe seguir este formato:
+La única fuente de verdad del modelo es:
 
 ```text
-numero-issue-descripcion-corta
+prisma/schema/*.prisma
 ```
 
-Ejemplo:
+No crear schemas paralelos ni un `schema.full.prisma`.
+
+`src/generated/prisma/` es generado y no se versiona.
+
+### Relaciones obligatorias
+
+Todo campo UUID que representa una referencia concreta a otra entidad debe tener una relación Prisma y una FK de PostgreSQL.
+
+Únicas excepciones actuales deliberadamente polimórficas:
+
+- `AnalysisMetric.scopeId`
+- `ModernizationRecommendation.targetId`
+- `WaveTarget.targetId`
+- `Job.subjectId`
+- `AuditLog.entityId`
+- `TestCase.targetId`
+- `ApprovalRequest.subjectId`
+
+Estos campos siempre se acompañan por su discriminador (`scopeType`, `targetType`, `subjectType`, `entityType`, etc.). No convertirlos en FK sin rediseñar primero el modelo polimórfico mediante OpenSpec.
+
+### Borrado
+
+- Preferir soft delete para entidades de negocio que ya lo soportan (`deletedAt`).
+- Datos históricos, auditoría, consumo y suscripciones no deben desaparecer por cascadas accidentales.
+- Usar `Restrict` cuando borrar un padre invalidaría historia que debe conservarse.
+- Usar `SetNull` únicamente para referencias opcionales y no críticas para conservar el registro histórico.
+- No agregar `Cascade` a datos históricos sin justificación explícita.
+
+### Migraciones
+
+- Nunca editar/eliminar una migración que ya haya sido compartida o aplicada.
+- Todo cambio de modelo debe generar una migración nueva y revisarse el SQL.
+- No usar `prisma db push` como sustituto de migraciones del proyecto.
+- El seed debe ser idempotente y no contener datos personales/credenciales.
+- Desarrollo local: cada integrante usa su propia base PostgreSQL mediante `DATABASE_URL`; no se requiere Docker.
+- `db:fresh` es exclusivamente destructivo/local y nunca se ejecuta sobre una BD compartida, staging o producción.
+- `prisma migrate dev` se usa únicamente para crear nuevas migraciones desde la BD local del autor del cambio.
+- BDs compartidas/hosteadas reciben migraciones existentes mediante `prisma migrate deploy`.
+
+## 4. Multi-tenancy — REGLAS OBLIGATORIAS
+
+`Organization` es la frontera de tenant de LegacyLift.
+
+### Contexto del tenant
+
+- El `organizationId` activo se deriva de la sesión/autenticación y la membresía activa del usuario.
+- Nunca confiar en un `organizationId` enviado libremente por body, query o params para autorizar acceso.
+- Un usuario puede pertenecer a varias organizaciones; cada request opera dentro de una organización activa explícita.
+
+### Lecturas
+
+Está prohibido acceder a recursos tenant-scoped solamente por UUID:
+
+```ts
+// PROHIBIDO
+prisma.project.findUnique({ where: { id: projectId } });
+```
+
+La consulta/autorización debe verificar pertenencia al tenant, directamente o a través de su padre:
+
+```ts
+// EJEMPLO CONCEPTUAL
+prisma.project.findFirst({
+  where: {
+    id: projectId,
+    organizationId: activeOrganizationId,
+  },
+});
+```
+
+Para entidades sin `organizationId` directo, verificar la cadena de propiedad, por ejemplo:
 
 ```text
-15-add-login-endpoint
+SourceFile -> SourceSnapshot -> Project -> Organization
+MigrationRun -> MigrationWave -> ModernizationPlan -> Project -> Organization
 ```
 
-La rama relacionada debe mantener el mismo número y descripción:
-
-```text
-feat/15-add-login-endpoint
-```
-
-## Etapa de planificación
-
-Antes de implementar código en un cambio que requiere OpenSpec:
-
-1. Lee la issue.
-2. Crea o utiliza la rama correspondiente.
-3. Explora el código relacionado sin modificarlo cuando sea necesario.
-4. Genera:
-
-   * `proposal.md`.
-   * Delta specs dentro de `specs/`.
-   * `design.md`.
-   * `tasks.md`.
-5. Incluye la referencia completa a la issue.
-6. Define claramente qué está dentro y fuera del alcance.
-7. Identifica riesgos de seguridad, base de datos, compatibilidad y despliegue.
-8. Identifica cualquier impacto en el frontend.
-9. Valida el cambio en modo estricto.
-10. Crea un commit que contenga únicamente la planificación.
-11. Abre un Draft Pull Request.
-
-El Draft Pull Request de planificación no debe contener código de aplicación, migraciones ni cambios de dependencias.
-
-No implementes código hasta que el responsable publique un comentario que comience exactamente con:
-
-```text
-PLAN APPROVED
-```
-
-Preguntas, observaciones, revisiones parciales, ausencia de objeciones o aprobaciones automáticas no constituyen autorización para implementar.
+### Escrituras
 
-## Revisión del plan
+Antes de crear/conectar/actualizar una relación:
 
-Antes de considerar aprobado un plan, los artefactos deben cumplir:
+- comprobar que todos los padres pertenecen a la organización activa;
+- impedir `connect`, `upsert` o IDs provenientes de otra organización;
+- usar transacciones para operaciones que modifican múltiples registros dependientes;
+- nunca permitir transferencias entre tenants mediante cambios directos de `organizationId`.
 
-### `proposal.md`
+### Membership y RBAC
 
-* Referencia la issue.
-* Explica el objetivo.
-* Define el alcance.
-* Define qué queda fuera.
-* Identifica las áreas afectadas.
-* No contiene implementación completa.
-* No inventa requisitos.
+- La membresía debe ser `ACTIVE`.
+- Un `Role` asignado a una membresía debe pertenecer a la misma organización.
+- `MembershipRole` solo usa roles con `scope = ORGANIZATION`.
+- `ProjectAccess` solo usa roles con `scope = PROJECT`.
+- `OrganizationInvitation.proposedRoleId` solo puede apuntar a un rol `ORGANIZATION` de la misma organización.
+- `ProjectAccess` nunca puede vincular membresías/roles de otra organización.
+- Los permisos se evalúan antes de ejecutar la lógica de negocio protegida.
+- Para recursos inexistentes o de otro tenant, preferir una respuesta que no revele la existencia del recurso de otra empresa.
 
-### Delta specs
+### Recursos de infraestructura
 
-* Describen comportamiento observable.
-* Incluyen escenarios de éxito.
-* Incluyen validaciones.
-* Incluyen errores relevantes.
-* Definen rutas, métodos, datos y códigos HTTP cuando corresponda.
-* Identifican contratos que deben coordinarse con el frontend.
+Los siguientes recursos deben pertenecer al mismo tenant que la operación que los usa:
 
-### `design.md`
+- `SecretReference`
+- `StorageObject`
+- `IntegrationConnection`
+- `ApiKey`
+- `AIProvider`
+- `ScannerAgent`
+- `DeploymentInstance`
+- `WorkerNode` cuando sea tenant-specific
 
-* Respeta la arquitectura NestJS existente.
-* Mantiene la lógica de negocio fuera de los controllers.
-* Justifica dependencias nuevas.
-* Incluye seguridad cuando corresponda.
-* Incluye migración y rollback para cambios de base de datos.
-* Identifica Swagger y pruebas afectadas.
+### Billing/entitlements
 
-### `tasks.md`
+- Las capacidades se determinan mediante `Feature` + `PlanEntitlement` + `Subscription`.
+- No hardcodear reglas como `if (plan === 'ENTERPRISE')` dentro de features.
+- Un límite `null` en un entitlement habilitado significa sin límite configurado para esa métrica; no significa cero.
+- La capa de billing debe impedir más de una suscripción corriente efectiva por organización según los estados que defina la feature.
+- Todo uso medible se registra con `UsageEvent` bajo la organización correcta.
 
-* Contiene tareas pequeñas y ordenadas.
-* Cada tarea es verificable.
-* Incluye validación de DTOs cuando corresponda.
-* Incluye actualización de Swagger.
-* Incluye pruebas.
-* Finaliza con lint, pruebas y build.
+### Auditoría
 
-## Implementación
+Las operaciones sensibles deben dejar trazabilidad con el `organizationId` correspondiente, especialmente:
 
-Después de recibir `PLAN APPROVED`:
+- cambios de membresías/roles;
+- creación/revocación de API keys;
+- conexiones/integraciones;
+- análisis y migraciones;
+- aprobaciones/rollback/deployment;
+- cambios de configuración o seguridad.
 
-1. Implementa únicamente el cambio aprobado.
-2. Sigue las tareas en el orden definido.
-3. Marca una tarea como completa solo después de verificarla.
-4. Mantén los artefactos OpenSpec sincronizados con la implementación.
-5. No amplíes el alcance.
-6. No agregues dependencias no aprobadas.
-7. No cambies contratos no aprobados.
-8. Ejecuta pruebas enfocadas durante el desarrollo.
-9. Ejecuta las validaciones completas antes de finalizar.
+Más detalle: [`docs/architecture/multi-tenancy.md`](docs/architecture/multi-tenancy.md).
 
-## Cambios materiales durante la implementación
+## 5. Código fuente, archivos y secretos
 
-Detén la implementación y actualiza OpenSpec cuando descubras que es necesario cambiar:
+PostgreSQL almacena metadatos, relaciones, hashes y estados. El contenido grande se representa mediante `StorageObject` y, cuando se implemente el storage real, vivirá en S3/MinIO/compatible.
 
-* El alcance de la issue.
-* Una ruta o método HTTP.
-* La estructura de una solicitud o respuesta.
-* Los códigos de estado.
-* La autenticación o autorización.
-* Una dependencia.
-* El diseño arquitectónico aprobado.
-* El modelo de datos.
-* Una migración.
-* La integración con el frontend.
-* Una decisión relevante de seguridad.
+No guardar en columnas normales:
 
-Después de actualizar los artefactos:
+- ZIP/repo completo;
+- código fuente masivo;
+- reportes/binarios grandes;
+- logs extensos;
+- secretos.
 
-1. Valida nuevamente el cambio.
-2. Sube la planificación actualizada.
-3. Solicita una nueva revisión.
-4. Espera otro comentario `PLAN APPROVED`.
+`SecretReference` almacena una referencia externa, nunca el secreto en claro.
 
-No continúes basándote en una aprobación anterior si el plan cambió materialmente.
+## 6. Auth actual
 
-## Finalización y archivado
+Alcance inicial de persistencia:
 
-Antes de marcar el Pull Request como listo:
+- email/password;
+- sesiones/refresh token hash;
+- verificación de email;
+- recuperación de contraseña;
+- organizaciones;
+- memberships;
+- RBAC;
+- API keys cuando entre en desarrollo.
 
-1. Confirma que todas las tareas estén realmente terminadas.
-2. Comprueba que las specs coincidan con el comportamiento final.
-3. Valida el cambio OpenSpec en modo estricto.
-4. Ejecuta lint, pruebas y build.
-5. Archiva el cambio mediante OpenSpec.
-6. Confirma que `openspec/specs/` represente el comportamiento vigente.
-7. Confirma que el cambio esté en `openspec/changes/archive/`.
-8. Ejecuta nuevamente las validaciones.
-9. Actualiza la descripción del Pull Request.
-10. Cambia el Draft Pull Request a `Ready for review`.
+OAuth/OIDC/SAML/MFA/WebAuthn se agregarán cuando tengan una issue/OpenSpec específica. No implementarlos anticipadamente.
 
-No archives cambios incompletos.
+Nunca persistir password, session token, reset token o API key en texto plano; solo hashes seguros.
 
-No elimines cambios archivados.
+Los correos usados para identidad/autenticación deben normalizarse de forma consistente (trim + lowercase) antes de consultar o persistir para que la unicidad no dependa de mayúsculas/minúsculas.
 
-## Archivos OpenSpec
+## 7. Billing actual
 
-```text
-openspec/specs/
-```
+El modelo actual cubre:
 
-Describe el comportamiento vigente del sistema.
+- `BillingPlan`
+- `BillingPrice`
+- `Feature`
+- `PlanEntitlement`
+- `Subscription`
+- `UsageEvent`
 
-```text
-openspec/changes/
-```
+Facturación fiscal, cobros, refunds y licenciamiento offline no se implementan hasta definir proveedor/modelo comercial.
 
-Contiene cambios activos y archivados.
+## 8. LegacyLift core
 
-No modifiques directamente una especificación principal para evitar crear un cambio OpenSpec.
+Mantener separadas estas responsabilidades:
 
-No actualices automáticamente los workflows, prompts o skills generados por OpenSpec sin una issue específica.
+1. **Ingestion:** repositorios/conexiones/snapshots.
+2. **Discovery/Analysis:** estructura, dependencias, métricas y findings.
+3. **Knowledge:** grafo, dominios, reglas y procesos de negocio.
+4. **Assessment:** scores y recomendaciones.
+5. **Modernization:** planes, arquitecturas objetivo y waves.
+6. **Migration:** transformación versionada mediante Migration Packs.
+7. **Validation:** baseline, tests, comparaciones y confidence.
+8. **AI:** proveedor/modelo/prompt/run como infraestructura transversal.
+9. **Jobs:** ejecución asíncrona cuando sea implementada.
 
-# Alcance obligatorio
+No mezclar transformación generativa con validación determinista. Una migración no se considera correcta únicamente porque la IA generó código o porque compila.
 
-Trabaja únicamente en la issue asignada.
+## 9. Seguridad
 
-No debes:
+- No exponer stack traces, secrets o contenido de otros tenants.
+- Validar toda entrada externa.
+- Mantener `helmet`, CORS explícito y `ValidationPipe` global.
+- No interpolar input del usuario en SQL/commands/shell.
+- Escanear/aislar archivos no confiables antes de ejecutarlos cuando se implemente el pipeline de análisis.
+- El código legado del cliente se considera confidencial/restringido por defecto.
 
-* Crear issues o tareas nuevas.
-* Cambiar responsables.
-* Cambiar labels.
-* Cambiar prioridades.
-* Cambiar estados del Project.
-* Ampliar el alcance por iniciativa propia.
-* Resolver problemas no relacionados en el mismo Pull Request.
-* Reescribir módulos completos cuando basta un cambio localizado.
-* Cambiar código de otras tareas sin una razón necesaria y documentada.
-* Modificar directamente `main`.
+## 10. Testing
 
-Cada rama y Pull Request debe corresponder a una sola issue.
+Para cada feature:
 
-# Git
+- unit tests para lógica relevante;
+- integration/e2e para contratos y acceso a datos crítico;
+- pruebas negativas de autorización/multi-tenancy cuando aplique;
+- para endpoints tenant-scoped, incluir al menos un caso que confirme que un tenant no puede acceder al recurso de otro.
 
-## Ramas
+No escribir tests que solo verifiquen `toBeDefined()` sin comportamiento útil.
 
-Formato obligatorio:
+## 11. Cambios con OpenSpec
 
-```text
-tipo/numero-issue-descripcion-corta
-```
+Seguir el flujo definido en `.github/CONTRIBUTING.md` y `openspec/config.yaml`.
 
-Ejemplos:
+Si la implementación requiere:
 
-```text
-feat/15-create-login-endpoint
-fix/22-token-expiration
-test/31-auth-service-tests
-refactor/40-user-validation
-chore/45-update-eslint
-```
+- nueva dependencia;
+- cambio de schema fuera del plan;
+- cambio de contrato;
+- nueva integración;
+- ampliación del alcance;
 
-## Operaciones prohibidas
+no improvisar: actualizar la issue/OpenSpec antes de continuar.
 
-Nunca ejecutes sin autorización explícita:
+## 12. Definition of Done técnica
 
-```text
-git push origin main
-git push --force
-git reset --hard
-git clean -fd
-git rebase sobre una rama de otra persona
-git checkout descartando cambios no confirmados
-```
-
-`git push --force-with-lease` solo puede utilizarse sobre la rama propia y después de un rebase consciente.
-
-No modifiques, elimines ni sobrescribas trabajo local que no hayas creado.
-
-No confirmes archivos sensibles.
-
-# Dependencias
-
-No agregues, elimines ni actualices dependencias salvo que la issue y el plan aprobado lo requieran.
-
-Antes de agregar una dependencia:
-
-1. Comprueba si el proyecto ya proporciona una solución equivalente.
-2. Explica por qué es necesaria.
-3. Evalúa mantenimiento, seguridad y tipado.
-4. Identifica si es de producción o desarrollo.
-5. Espera aprobación explícita cuando corresponda.
-
-Este proyecto utiliza npm.
-
-No cambies el administrador de paquetes.
-
-No edites manualmente `package-lock.json`. Debe actualizarse mediante npm.
-
-# Arquitectura NestJS
-
-Mantén las responsabilidades separadas:
-
-* Los controllers reciben solicitudes y devuelven respuestas.
-* Los services contienen la lógica de negocio.
-* Los DTOs definen y validan datos de entrada.
-* Los modules organizan dependencias.
-* Los guards controlan autenticación y autorización.
-* Los interceptors, pipes y filters resuelven responsabilidades transversales.
-
-No coloques lógica de negocio en controllers.
-
-No accedas directamente a `process.env` desde módulos de negocio. Utiliza `ConfigService`.
-
-Todos los endpoints deben respetar el prefijo global:
-
-```text
-/api
-```
-
-Los endpoints nuevos o modificados deben actualizar Swagger/OpenAPI cuando corresponda.
-
-Respeta los patrones de módulos, servicios, DTOs, excepciones y pruebas existentes antes de introducir una estructura nueva.
-
-# TypeScript
-
-El proyecto utiliza TypeScript estricto.
-
-No introduzcas:
-
-```typescript
-any
-// @ts-ignore
-// @ts-nocheck
-```
-
-No utilices afirmaciones de tipo inseguras únicamente para silenciar errores.
-
-No desactives reglas de ESLint para ocultar problemas.
-
-Una excepción solo es aceptable cuando:
-
-* Es técnicamente necesaria.
-* Tiene el alcance mínimo posible.
-* Incluye una explicación clara.
-* Está contemplada por la issue o el plan aprobado.
-* Se menciona en el Pull Request.
-
-Prefiere tipos explícitos en los límites del sistema:
-
-* DTOs.
-* Respuestas públicas.
-* Funciones exportadas.
-* Servicios externos.
-* Repositorios.
-* Adaptadores.
-* Configuración.
-
-# DTOs y validación
-
-Toda entrada externa debe validarse.
-
-Utiliza:
-
-* `class-validator`.
-* `class-transformer`.
-* DTOs específicos.
-* El `ValidationPipe` global existente.
-
-No aceptes objetos externos sin validar.
-
-No reutilices entidades de base de datos como DTOs públicos.
-
-No cambies nombres, tipos, campos obligatorios o estructura de respuestas sin evaluar el impacto en consumidores.
-
-# Contratos con el frontend
-
-No modifiques unilateralmente:
-
-* Rutas.
-* Métodos HTTP.
-* Nombres de propiedades.
-* Tipos de datos.
-* Códigos de respuesta.
-* Estructura de errores.
-* Reglas de autenticación.
-* Formato de fechas.
-* Campos opcionales u obligatorios.
-
-Los cambios de contrato deben estar descritos en la issue y en OpenSpec.
-
-Cuando una modificación afecte al frontend:
-
-* Indícalo en `proposal.md`.
-* Documenta el contrato en las delta specs.
-* Incluye la referencia completa a la issue del frontend.
-* Menciónalo en el Pull Request.
-* Coordina la secuencia de integración cuando sea necesaria.
-
-# Base de datos
-
-No realices sin autorización explícita y planificación aprobada:
-
-* Migraciones destructivas.
-* Eliminación de tablas o columnas.
-* Renombrado de columnas.
-* Cambios de relaciones.
-* Cambios de restricciones.
-* Modificación de datos reales.
-* Reseteo de la base de datos.
-* Seeds destructivos.
-
-No borres ni reescribas migraciones existentes que ya hayan sido compartidas.
-
-Una migración debe ser:
-
-* Revisable.
-* Reproducible.
-* Coherente con la issue.
-* Coherente con OpenSpec.
-* Acompañada por estrategia de rollback cuando corresponda.
-
-# Autenticación y seguridad
-
-No modifiques autenticación, autorización, roles, guards, tokens, cookies o permisos fuera del alcance aprobado.
-
-Nunca escribas, muestres ni confirmes:
-
-* Contraseñas.
-* Tokens.
-* Secretos.
-* Claves privadas.
-* Credenciales de base de datos.
-* Contenido real de archivos `.env`.
-
-No agregues secretos a:
-
-* Código fuente.
-* Pruebas.
-* Logs.
-* README.
-* Issues.
-* OpenSpec.
-* Pull Requests.
-
-No registres cuerpos completos de solicitudes que puedan contener información sensible.
-
-No desactives controles de seguridad para hacer funcionar temporalmente una integración.
-
-# Calidad del código
-
-Realiza el cambio más pequeño que resuelva correctamente la issue.
-
-Prefiere:
-
-* Funciones pequeñas.
-* Nombres descriptivos.
-* Dependencias explícitas.
-* Código consistente con el repositorio.
-* Reutilización razonable.
-* Errores controlados.
-* Pruebas relevantes.
-* Abstracciones justificadas por una necesidad real.
-
-Evita:
-
-* Abstracciones innecesarias.
-* Patrones introducidos para un único uso trivial.
-* Duplicación considerable.
-* Archivos excesivamente grandes.
-* Comentarios que repiten el código.
-* Código muerto.
-* Soluciones temporales sin documentar.
-* Refactorizaciones masivas no solicitadas.
-* Cambios de formato en archivos no relacionados.
-* Logs de depuración.
-
-# Pruebas y validación
-
-Todo cambio de comportamiento debe incluir o actualizar pruebas cuando sea razonable.
-
-Antes de considerar terminada una tarea ejecuta:
+Antes de considerar una tarea terminada:
 
 ```bash
+npm run prisma:validate
+npm run prisma:generate
 npm run lint
 npm test
 npm run build
 ```
 
-Cuando la tarea afecte pruebas de extremo a extremo:
-
-```bash
-npm run test:e2e
-```
-
-Cuando el repositorio tenga configurado `npm run check`, utilízalo además como validación completa.
-
-Para cambios OpenSpec, ejecuta también la validación estricta correspondiente.
-
-No afirmes que una validación pasó si no la ejecutaste.
-
-Si no puedes ejecutar un comando:
-
-1. Indica cuál no pudiste ejecutar.
-2. Explica la causa.
-3. Describe qué parte queda sin verificar.
-4. No presentes el cambio como completamente validado.
-
-No elimines, debilites ni omitas pruebas únicamente para conseguir que el pipeline pase.
-
-# Archivos protegidos conceptualmente
-
-No modifiques estos archivos salvo que la issue y el plan aprobado lo requieran:
-
-```text
-.github/**
-AGENTS.md
-CLAUDE.md
-CODEOWNERS
-package.json
-package-lock.json
-nest-cli.json
-tsconfig.json
-tsconfig.build.json
-eslint.config.mjs
-.env.example
-openspec/**
-.claude/skills/openspec-*/**
-.agents/skills/openspec-*/**
-.github/prompts/opsx-*
-.github/skills/openspec-*/**
-```
-
-La lista de carpetas generadas puede variar según los agentes configurados.
-
-Los cambios en archivos protegidos deben mencionarse expresamente en el Pull Request.
-
-No modifiques GitHub Actions para evitar una validación fallida.
-
-# Revisión antes de finalizar
-
-Ejecuta:
-
-```bash
-git diff --check
-git status
-npm run lint
-npm test
-npm run build
-```
-
-Cuando corresponda, ejecuta también:
-
-```bash
-npm run test:e2e
-```
-
-Comprueba además que:
-
-* Se cumplen los criterios de aceptación.
-* El código coincide con el plan aprobado.
-* Los artefactos OpenSpec están actualizados.
-* No hay tareas OpenSpec pendientes.
-* No hay archivos sensibles.
-* No hay código temporal.
-* No hay logs de depuración.
-* No hay cambios fuera del alcance.
-* Los contratos existentes se mantienen o están documentados.
-* Swagger está actualizado cuando corresponde.
-* Las pruebas cubren el comportamiento modificado.
-* Las dependencias nuevas fueron aprobadas.
-* El cambio está archivado antes de pasar a revisión final.
-
-# Pull Request
-
-## Draft Pull Request de planificación
-
-Debe incluir:
-
-* Referencia a la issue.
-* Nombre del cambio OpenSpec.
-* `proposal.md`.
-* Delta specs.
-* `design.md`.
-* `tasks.md`.
-* Resultado de la validación OpenSpec.
-* Confirmación de que todavía no contiene implementación.
-
-No debe presentarse como listo para revisión final.
-
-## Pull Request listo para revisión
-
-Debe incluir:
-
-* Resumen del cambio.
-* Áreas principales modificadas.
-* Cómo probarlo.
-* Comandos realmente ejecutados.
-* Resultados de las pruebas.
-* Riesgos o limitaciones conocidos.
-* Issue relacionada mediante `Closes #NUMERO`.
-* Issue del frontend relacionada cuando exista.
-* Enlace al comentario `PLAN APPROVED`.
-* Cualquier cambio de dependencia, configuración, base de datos o contrato.
-* Confirmación de que el cambio OpenSpec fue archivado.
-
-No ocultes errores pendientes.
-
-No marques casillas que no hayan sido comprobadas.
-
-# Uso de IA
-
-El código y los documentos producidos con IA deben tratarse como propuestas, no como hechos correctos por defecto.
-
-Antes de finalizar:
-
-* Comprueba cada archivo modificado.
-* Verifica que las APIs utilizadas existan realmente.
-* Comprueba las versiones instaladas en `package.json`.
-* Confirma que los imports sean correctos.
-* Elimina funciones, clases o dependencias inventadas.
-* Revisa seguridad, errores y casos límite.
-* Comprueba que el código implemente exactamente el plan aprobado.
-* Asegúrate de poder explicar la implementación.
-
-No incluyas texto como “generado por IA” dentro del código fuente.
-
-El autor del Pull Request es responsable de entender y justificar todas las decisiones, independientemente de la herramienta utilizada.
+Y ejecutar e2e/migraciones cuando la feature las afecte.

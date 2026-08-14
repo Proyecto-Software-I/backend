@@ -1,0 +1,263 @@
+enum MigrationPackStatus {
+  DRAFT
+  ACTIVE
+  DEPRECATED
+  RETIRED
+}
+
+enum PlanStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum ArchitectureKind {
+  CURRENT
+  INTERMEDIATE
+  TARGET
+}
+
+enum ArchitectureComponentKind {
+  APPLICATION
+  SERVICE
+  MODULE
+  DATABASE
+  QUEUE
+  MAINFRAME
+  API_GATEWAY
+  EXTERNAL_SYSTEM
+  USER_INTERFACE
+  JOB
+  OTHER
+}
+
+enum ArchitectureRelationKind {
+  CALLS
+  READS
+  WRITES
+  PUBLISHES
+  CONSUMES
+  AUTHENTICATES
+  ROUTES_TO
+  DEPENDS_ON
+  SYNCHRONIZES
+  OTHER
+}
+
+enum WaveStatus {
+  DRAFT
+  READY
+  IN_PROGRESS
+  VALIDATING
+  BLOCKED
+  COMPLETED
+  CANCELED
+}
+
+enum MilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+}
+
+model MigrationPack {
+  id              String              @id @default(uuid()) @db.Uuid
+  code            String              @unique @db.VarChar(120)
+  name            String              @db.VarChar(180)
+  description     String?
+  sourceSelectors Json
+  targetOptions   Json
+  status          MigrationPackStatus @default(DRAFT)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+
+  versions        MigrationPackVersion[]
+  recommendations ModernizationRecommendation[]
+}
+
+model MigrationPackVersion {
+  id                     String              @id @default(uuid()) @db.Uuid
+  migrationPackId        String              @db.Uuid
+  version                String              @db.VarChar(50)
+  status                 MigrationPackStatus @default(DRAFT)
+  engineVersion          String?             @db.VarChar(100)
+  configurationSchema    Json?
+  ruleSetStorageObjectId String?             @db.Uuid
+  releaseNotes           String?
+  createdAt              DateTime            @default(now()) @db.Timestamptz(6)
+
+  migrationPack MigrationPack  @relation(fields: [migrationPackId], references: [id], onDelete: Cascade)
+  ruleSetObject StorageObject? @relation("MigrationPackRuleSet", fields: [ruleSetStorageObjectId], references: [id], onDelete: SetNull)
+  migrationRuns MigrationRun[]
+
+  @@unique([migrationPackId, version])
+}
+
+model ModernizationPlan {
+  id                    String     @id @default(uuid()) @db.Uuid
+  projectId             String     @db.Uuid
+  systemId              String?    @db.Uuid
+  name                  String     @db.VarChar(220)
+  version               Int        @default(1)
+  status                PlanStatus @default(DRAFT)
+  objective             String?
+  assumptions           Json?
+  constraints           Json?
+  targetSummary         Json?
+  estimatedCost         Decimal?   @db.Decimal(20, 4)
+  currency              String?    @db.VarChar(3)
+  estimatedDurationDays Int?
+  assessmentId          String?    @db.Uuid
+  createdByUserId       String?    @db.Uuid
+  approvedByUserId      String?    @db.Uuid
+  approvedAt            DateTime?  @db.Timestamptz(6)
+  createdAt             DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime   @updatedAt @db.Timestamptz(6)
+
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  system             LegacySystem?       @relation(fields: [systemId], references: [id], onDelete: SetNull)
+  assessment         Assessment?         @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation("ModernizationPlanCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  approvedBy         User?               @relation("ModernizationPlanApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  architectureModels ArchitectureModel[]
+  waves              MigrationWave[]
+  milestones         PlanMilestone[]
+
+  @@index([projectId, status])
+  @@index([systemId])
+}
+
+model ArchitectureModel {
+  id          String           @id @default(uuid()) @db.Uuid
+  projectId   String           @db.Uuid
+  systemId    String?          @db.Uuid
+  planId      String?          @db.Uuid
+  kind        ArchitectureKind
+  name        String           @db.VarChar(200)
+  description String?
+  version     Int              @default(1)
+  metadata    Json?
+  createdAt   DateTime         @default(now()) @db.Timestamptz(6)
+
+  project    Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  system     LegacySystem?           @relation(fields: [systemId], references: [id], onDelete: SetNull)
+  plan       ModernizationPlan?      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  components ArchitectureComponent[]
+  relations  ArchitectureRelation[]
+
+  @@index([projectId, kind])
+  @@index([planId])
+}
+
+model ArchitectureComponent {
+  id             String                    @id @default(uuid()) @db.Uuid
+  architectureId String                    @db.Uuid
+  stableKey      String                    @db.VarChar(300)
+  name           String                    @db.VarChar(220)
+  kind           ArchitectureComponentKind
+  technology     Json?
+  properties     Json?
+  position       Json?
+  sourceNodeId   String?                   @db.Uuid
+  createdAt      DateTime                  @default(now()) @db.Timestamptz(6)
+
+  architecture      ArchitectureModel      @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  sourceNode        KnowledgeNode?         @relation("ArchitectureComponentSourceNode", fields: [sourceNodeId], references: [id], onDelete: SetNull)
+  outgoingRelations ArchitectureRelation[] @relation("ArchitectureRelationFrom")
+  incomingRelations ArchitectureRelation[] @relation("ArchitectureRelationTo")
+
+  @@unique([architectureId, stableKey])
+}
+
+model ArchitectureRelation {
+  id              String                   @id @default(uuid()) @db.Uuid
+  architectureId  String                   @db.Uuid
+  fromComponentId String                   @db.Uuid
+  toComponentId   String                   @db.Uuid
+  kind            ArchitectureRelationKind
+  label           String?                  @db.VarChar(180)
+  properties      Json?
+
+  architecture  ArchitectureModel     @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  fromComponent ArchitectureComponent @relation("ArchitectureRelationFrom", fields: [fromComponentId], references: [id], onDelete: Cascade)
+  toComponent   ArchitectureComponent @relation("ArchitectureRelationTo", fields: [toComponentId], references: [id], onDelete: Cascade)
+
+  @@unique([architectureId, fromComponentId, toComponentId, kind])
+  @@index([fromComponentId])
+  @@index([toComponentId])
+}
+
+model MigrationWave {
+  id            String                 @id @default(uuid()) @db.Uuid
+  planId        String                 @db.Uuid
+  sequence      Int
+  name          String                 @db.VarChar(200)
+  objective     String?
+  strategy      ModernizationStrategy
+  status        WaveStatus             @default(DRAFT)
+  riskScore     Decimal?               @db.Decimal(5, 2)
+  priority      RecommendationPriority @default(MEDIUM)
+  plannedStart  DateTime?              @db.Timestamptz(6)
+  plannedEnd    DateTime?              @db.Timestamptz(6)
+  actualStart   DateTime?              @db.Timestamptz(6)
+  actualEnd     DateTime?              @db.Timestamptz(6)
+  entryCriteria Json?
+  exitCriteria  Json?
+  createdAt     DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime               @updatedAt @db.Timestamptz(6)
+
+  plan             ModernizationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  targets          WaveTarget[]
+  dependenciesFrom WaveDependency[]  @relation("WaveDependencyFrom")
+  dependenciesTo   WaveDependency[]  @relation("WaveDependencyTo")
+  migrationRuns    MigrationRun[]
+
+  @@unique([planId, sequence])
+  @@index([planId, status])
+}
+
+model WaveTarget {
+  id               String                 @id @default(uuid()) @db.Uuid
+  waveId           String                 @db.Uuid
+  targetType       String                 @db.VarChar(80)
+  targetId         String?                @db.Uuid
+  label            String?                @db.VarChar(220)
+  strategyOverride ModernizationStrategy?
+  targetStack      Json?
+  metadata         Json?
+
+  wave MigrationWave @relation(fields: [waveId], references: [id], onDelete: Cascade)
+
+  @@index([waveId, targetType])
+  @@index([targetId])
+}
+
+model WaveDependency {
+  fromWaveId String  @db.Uuid
+  toWaveId   String  @db.Uuid
+  reason     String?
+
+  fromWave MigrationWave @relation("WaveDependencyFrom", fields: [fromWaveId], references: [id], onDelete: Cascade)
+  toWave   MigrationWave @relation("WaveDependencyTo", fields: [toWaveId], references: [id], onDelete: Cascade)
+
+  @@id([fromWaveId, toWaveId])
+}
+
+model PlanMilestone {
+  id          String          @id @default(uuid()) @db.Uuid
+  planId      String          @db.Uuid
+  name        String          @db.VarChar(200)
+  description String?
+  sequence    Int
+  status      MilestoneStatus @default(NOT_STARTED)
+  dueAt       DateTime?       @db.Timestamptz(6)
+  completedAt DateTime?       @db.Timestamptz(6)
+
+  plan ModernizationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, sequence])
+}

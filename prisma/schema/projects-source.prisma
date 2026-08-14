@@ -1,0 +1,533 @@
+enum ProjectStatus {
+  DRAFT
+  DISCOVERY
+  PLANNING
+  MIGRATING
+  VALIDATING
+  COMPLETED
+  ON_HOLD
+  ARCHIVED
+}
+
+enum SystemCriticality {
+  LOW
+  MEDIUM
+  HIGH
+  MISSION_CRITICAL
+}
+
+enum ApplicationType {
+  WEB
+  API
+  BATCH
+  DESKTOP
+  MAINFRAME
+  SERVICE
+  LIBRARY
+  DATABASE
+  OTHER
+}
+
+enum EnvironmentType {
+  DEVELOPMENT
+  TEST
+  QA
+  STAGING
+  UAT
+  PRODUCTION
+  DR
+}
+
+enum SourceConnectionType {
+  GIT
+  ZIP_UPLOAD
+  FILESYSTEM
+  SFTP
+  MAINFRAME
+  OBJECT_STORAGE
+  API
+}
+
+enum SourceConnectionStatus {
+  PENDING
+  ACTIVE
+  ERROR
+  DISABLED
+}
+
+enum RepositoryProvider {
+  GITHUB
+  GITLAB
+  BITBUCKET
+  AZURE_DEVOPS
+  GENERIC_GIT
+  LOCAL
+}
+
+enum SnapshotStatus {
+  QUEUED
+  IMPORTING
+  READY
+  PARTIAL
+  FAILED
+}
+
+enum SourceArtifactType {
+  SOURCE
+  TEST
+  CONFIG
+  SCRIPT
+  SQL
+  COPYBOOK
+  JCL
+  BMS
+  DATA_DEFINITION
+  DOCUMENTATION
+  BINARY
+  UNKNOWN
+}
+
+enum TechnologyKind {
+  LANGUAGE
+  FRAMEWORK
+  RUNTIME
+  DATABASE
+  MAINFRAME
+  MESSAGING
+  BUILD_TOOL
+  PACKAGE_MANAGER
+  OPERATING_SYSTEM
+  PROTOCOL
+  OTHER
+}
+
+enum TechnologyLifecycle {
+  CURRENT
+  LEGACY
+  DEPRECATED
+  END_OF_SUPPORT
+  UNKNOWN
+}
+
+enum DependencyScope {
+  RUNTIME
+  DEVELOPMENT
+  TEST
+  BUILD
+  OPTIONAL
+  UNKNOWN
+}
+
+enum DependencyStatus {
+  CURRENT
+  OUTDATED
+  DEPRECATED
+  VULNERABLE
+  UNSUPPORTED
+  UNKNOWN
+}
+
+enum AgentStatus {
+  REGISTERING
+  ONLINE
+  BUSY
+  DEGRADED
+  OFFLINE
+  REVOKED
+}
+
+enum ScanStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELED
+}
+
+model Project {
+  id              String        @id @default(uuid()) @db.Uuid
+  organizationId  String        @db.Uuid
+  key             String        @db.VarChar(50)
+  name            String        @db.VarChar(200)
+  description     String?
+  status          ProjectStatus @default(DRAFT)
+  clientReference String?       @db.VarChar(150)
+  tags            Json?
+  settings        Json?
+  createdByUserId String?       @db.Uuid
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(6)
+  archivedAt      DateTime?     @db.Timestamptz(6)
+  deletedAt       DateTime?     @db.Timestamptz(6)
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy          User?               @relation("ProjectCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  accesses           ProjectAccess[]
+  systems            LegacySystem[]
+  sourceConnections  SourceConnection[]
+  repositories       Repository[]
+  snapshots          SourceSnapshot[]
+  analysisRuns       AnalysisRun[]
+  modernizationPlans ModernizationPlan[]
+  architectureModels ArchitectureModel[]
+  testSuites         TestSuite[]
+  apiKeys            ApiKey[]
+  usageEvents        UsageEvent[]
+  aiRuns             AIRun[]
+  jobs               Job[]
+  reports            Report[]
+  approvalRequests   ApprovalRequest[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, status])
+  @@index([deletedAt])
+}
+
+model LegacySystem {
+  id                  String            @id @default(uuid()) @db.Uuid
+  projectId           String            @db.Uuid
+  code                String            @db.VarChar(80)
+  name                String            @db.VarChar(200)
+  description         String?
+  businessOwner       String?           @db.VarChar(200)
+  technicalOwner      String?           @db.VarChar(200)
+  criticality         SystemCriticality @default(MEDIUM)
+  businessDomain      String?           @db.VarChar(160)
+  currentArchitecture Json?
+  runtimeMetadata     Json?
+  slaMetadata         Json?
+  createdAt           DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(6)
+  deletedAt           DateTime?         @db.Timestamptz(6)
+
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  applications       Application[]
+  environments       SystemEnvironment[]
+  sourceConnections  SourceConnection[]
+  repositories       Repository[]
+  snapshots          SourceSnapshot[]
+  technologies       SystemTechnology[]
+  analysisRuns       AnalysisRun[]
+  domains            SystemDomain[]
+  knowledgeNodes     KnowledgeNode[]
+  knowledgeEdges     KnowledgeEdge[]
+  businessRules      BusinessRule[]
+  businessProcesses  BusinessProcess[]
+  modernizationPlans ModernizationPlan[]
+  architectureModels ArchitectureModel[]
+  testSuites         TestSuite[]
+  behaviorBaselines  BehaviorBaseline[]
+  migrationRuns      MigrationRun[]
+  scanSessions       ScanSession[]
+  usageEvents        UsageEvent[]
+  aiRuns             AIRun[]
+  jobs               Job[]
+  reports            Report[]
+
+  @@unique([projectId, code])
+  @@index([projectId, criticality])
+  @@index([deletedAt])
+}
+
+model Application {
+  id          String          @id @default(uuid()) @db.Uuid
+  systemId    String          @db.Uuid
+  code        String          @db.VarChar(100)
+  name        String          @db.VarChar(200)
+  type        ApplicationType
+  description String?
+  entryPoint  String?
+  metadata    Json?
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(6)
+
+  system LegacySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@unique([systemId, code])
+  @@index([systemId, type])
+}
+
+model SystemEnvironment {
+  id          String          @id @default(uuid()) @db.Uuid
+  systemId    String          @db.Uuid
+  name        String          @db.VarChar(120)
+  type        EnvironmentType
+  endpoint    String?
+  runtime     Json?
+  secretRefId String?         @db.Uuid
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(6)
+
+  system            LegacySystem      @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  secret            SecretReference?  @relation(fields: [secretRefId], references: [id], onDelete: SetNull)
+  deployments       DeploymentRun[]
+  behaviorBaselines BehaviorBaseline[] @relation("BehaviorBaselineEnvironment")
+  validationRuns    ValidationRun[]    @relation("ValidationRunEnvironment")
+  testRuns          TestRun[]          @relation("TestRunEnvironment")
+
+  @@unique([systemId, name])
+}
+
+model SourceConnection {
+  id             String                 @id @default(uuid()) @db.Uuid
+  projectId      String                 @db.Uuid
+  systemId       String?                @db.Uuid
+  scannerAgentId String?                @db.Uuid
+  type           SourceConnectionType
+  name           String                 @db.VarChar(150)
+  status         SourceConnectionStatus @default(PENDING)
+  endpoint       String?
+  secretRefId    String?                @db.Uuid
+  config         Json?
+  lastCheckedAt  DateTime?              @db.Timestamptz(6)
+  lastError      String?
+  createdAt      DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(6)
+  deletedAt      DateTime?              @db.Timestamptz(6)
+
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  system       LegacySystem?    @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  scannerAgent ScannerAgent?    @relation(fields: [scannerAgentId], references: [id], onDelete: SetNull)
+  secret       SecretReference? @relation(fields: [secretRefId], references: [id], onDelete: SetNull)
+  repositories Repository[]
+  snapshots    SourceSnapshot[]
+  scanSessions ScanSession[]
+
+  @@index([projectId, status])
+  @@index([systemId])
+}
+
+model Repository {
+  id                 String             @id @default(uuid()) @db.Uuid
+  projectId          String             @db.Uuid
+  systemId           String?            @db.Uuid
+  sourceConnectionId String?            @db.Uuid
+  provider           RepositoryProvider
+  name               String             @db.VarChar(180)
+  externalId         String?
+  cloneUrl           String?
+  webUrl             String?
+  defaultBranch      String?            @db.VarChar(255)
+  secretRefId        String?            @db.Uuid
+  isReadOnly         Boolean            @default(true)
+  metadata           Json?
+  createdAt          DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime?          @db.Timestamptz(6)
+
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  system           LegacySystem?     @relation(fields: [systemId], references: [id], onDelete: SetNull)
+  sourceConnection SourceConnection? @relation(fields: [sourceConnectionId], references: [id], onDelete: SetNull)
+  secret           SecretReference?  @relation(fields: [secretRefId], references: [id], onDelete: SetNull)
+  snapshots        SourceSnapshot[]
+  migrationRuns    MigrationRun[]
+  pullRequests     PullRequest[]
+
+  @@index([projectId, provider])
+  @@index([systemId])
+  @@index([projectId, provider, externalId])
+}
+
+model SourceSnapshot {
+  id                      String         @id @default(uuid()) @db.Uuid
+  projectId               String         @db.Uuid
+  systemId                String         @db.Uuid
+  repositoryId            String?        @db.Uuid
+  sourceConnectionId      String?        @db.Uuid
+  status                  SnapshotStatus @default(QUEUED)
+  label                   String?        @db.VarChar(180)
+  branch                  String?        @db.VarChar(255)
+  commitSha               String?        @db.VarChar(100)
+  tag                     String?        @db.VarChar(255)
+  packageStorageObjectId  String?        @db.Uuid
+  manifestStorageObjectId String?        @db.Uuid
+  totalFiles              Int            @default(0)
+  totalLines              BigInt         @default(0)
+  totalBytes              BigInt         @default(0)
+  languageSummary         Json?
+  importedAt              DateTime?      @db.Timestamptz(6)
+  createdAt               DateTime       @default(now()) @db.Timestamptz(6)
+
+  project           Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  system            LegacySystem         @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  repository        Repository?          @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  sourceConnection  SourceConnection?    @relation(fields: [sourceConnectionId], references: [id], onDelete: SetNull)
+  packageObject     StorageObject?       @relation("SnapshotPackage", fields: [packageStorageObjectId], references: [id], onDelete: SetNull)
+  manifestObject    StorageObject?       @relation("SnapshotManifest", fields: [manifestStorageObjectId], references: [id], onDelete: SetNull)
+  files             SourceFile[]
+  dependencies      SoftwareDependency[]
+  analysisRuns      AnalysisRun[]
+  domains           SystemDomain[]
+  knowledgeNodes    KnowledgeNode[]
+  knowledgeEdges    KnowledgeEdge[]
+  businessRules     BusinessRule[]
+  businessProcesses BusinessProcess[]
+  testSuites        TestSuite[]
+  behaviorBaselines BehaviorBaseline[]
+  migrationRuns     MigrationRun[]
+  scanSession       ScanSession?
+
+  @@index([projectId, createdAt])
+  @@index([systemId, createdAt])
+  @@index([repositoryId, commitSha])
+}
+
+model SourceFile {
+  id              String             @id @default(uuid()) @db.Uuid
+  snapshotId      String             @db.Uuid
+  path            String
+  fileName        String
+  extension       String?            @db.VarChar(40)
+  language        String?            @db.VarChar(100)
+  artifactType    SourceArtifactType @default(UNKNOWN)
+  encoding        String?            @db.VarChar(50)
+  checksumSha256  String             @db.VarChar(64)
+  sizeBytes       BigInt
+  linesOfCode     Int?
+  isGenerated     Boolean            @default(false)
+  isBinary        Boolean            @default(false)
+  storageObjectId String?            @db.Uuid
+  metadata        Json?
+  createdAt       DateTime           @default(now()) @db.Timestamptz(6)
+
+  snapshot             SourceSnapshot         @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  storageObject        StorageObject?         @relation("SourceFileStorage", fields: [storageObjectId], references: [id], onDelete: SetNull)
+  dependenciesDeclared SoftwareDependency[]
+  findings             Finding[]
+  knowledgeNodes       KnowledgeNode[]
+  businessRuleEvidence BusinessRuleEvidence[]
+  migrationUnits       MigrationUnit[]
+  codeChanges          CodeChange[]
+
+  @@unique([snapshotId, path])
+  @@index([snapshotId, artifactType])
+  @@index([language])
+  @@index([checksumSha256])
+}
+
+model Technology {
+  id        String         @id @default(uuid()) @db.Uuid
+  key       String         @unique @db.VarChar(120)
+  name      String         @db.VarChar(150)
+  kind      TechnologyKind
+  vendor    String?        @db.VarChar(150)
+  metadata  Json?
+  createdAt DateTime       @default(now()) @db.Timestamptz(6)
+
+  systems SystemTechnology[]
+
+  @@index([kind])
+}
+
+model SystemTechnology {
+  id           String              @id @default(uuid()) @db.Uuid
+  systemId     String              @db.Uuid
+  technologyId String              @db.Uuid
+  version      String              @default("unknown") @db.VarChar(100)
+  lifecycle    TechnologyLifecycle @default(UNKNOWN)
+  confidence   Decimal?            @db.Decimal(5, 2)
+  evidence     Json?
+  detectedAt   DateTime            @default(now()) @db.Timestamptz(6)
+
+  system     LegacySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  technology Technology   @relation(fields: [technologyId], references: [id], onDelete: Restrict)
+
+  @@unique([systemId, technologyId, version])
+  @@index([systemId, lifecycle])
+}
+
+model SoftwareDependency {
+  id             String           @id @default(uuid()) @db.Uuid
+  snapshotId     String           @db.Uuid
+  sourceFileId   String?          @db.Uuid
+  ecosystem      String?          @db.VarChar(80)
+  packageManager String?          @db.VarChar(80)
+  name           String           @db.VarChar(300)
+  version        String?          @db.VarChar(120)
+  latestVersion  String?          @db.VarChar(120)
+  purl           String?
+  scope          DependencyScope  @default(UNKNOWN)
+  status         DependencyStatus @default(UNKNOWN)
+  isDirect       Boolean          @default(true)
+  licenseSpdx    String?          @db.VarChar(100)
+  endOfSupportAt DateTime?        @db.Timestamptz(6)
+  metadata       Json?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+
+  snapshot        SourceSnapshot            @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  sourceFile      SourceFile?               @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+  vulnerabilities DependencyVulnerability[]
+
+  @@index([snapshotId, status])
+  @@index([name, version])
+}
+
+model DependencyVulnerability {
+  id           String   @id @default(uuid()) @db.Uuid
+  dependencyId String   @db.Uuid
+  advisoryId   String   @db.VarChar(120)
+  cve          String?  @db.VarChar(40)
+  severity     String?  @db.VarChar(30)
+  cvssScore    Decimal? @db.Decimal(4, 2)
+  fixedVersion String?  @db.VarChar(120)
+  source       String?  @db.VarChar(100)
+  url          String?
+  metadata     Json?
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  dependency SoftwareDependency @relation(fields: [dependencyId], references: [id], onDelete: Cascade)
+
+  @@unique([dependencyId, advisoryId])
+  @@index([cve])
+}
+
+model ScannerAgent {
+  id                   String      @id @default(uuid()) @db.Uuid
+  organizationId       String      @db.Uuid
+  deploymentInstanceId String?     @db.Uuid
+  name                 String      @db.VarChar(150)
+  tokenHash            String      @unique
+  status               AgentStatus @default(REGISTERING)
+  version              String?     @db.VarChar(80)
+  capabilities         Json?
+  hostFingerprint      String?
+  metadata             Json?
+  lastSeenAt           DateTime?   @db.Timestamptz(6)
+  revokedAt            DateTime?   @db.Timestamptz(6)
+  createdAt            DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime    @updatedAt @db.Timestamptz(6)
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  deploymentInstance DeploymentInstance? @relation(fields: [deploymentInstanceId], references: [id], onDelete: SetNull)
+  sourceConnections  SourceConnection[]
+  scanSessions       ScanSession[]
+
+  @@index([organizationId, status])
+}
+
+model ScanSession {
+  id                 String     @id @default(uuid()) @db.Uuid
+  scannerAgentId     String     @db.Uuid
+  systemId           String     @db.Uuid
+  sourceConnectionId String     @db.Uuid
+  snapshotId         String?    @unique @db.Uuid
+  status             ScanStatus @default(QUEUED)
+  requestedByUserId  String?    @db.Uuid
+  manifest           Json?
+  progress           Decimal?   @db.Decimal(5, 2)
+  error              String?
+  startedAt          DateTime?  @db.Timestamptz(6)
+  completedAt        DateTime?  @db.Timestamptz(6)
+  createdAt          DateTime   @default(now()) @db.Timestamptz(6)
+
+  scannerAgent     ScannerAgent     @relation(fields: [scannerAgentId], references: [id], onDelete: Cascade)
+  system           LegacySystem     @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  sourceConnection SourceConnection @relation(fields: [sourceConnectionId], references: [id], onDelete: Cascade)
+  snapshot         SourceSnapshot?  @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  requestedBy      User?            @relation("ScanSessionRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([scannerAgentId, status])
+  @@index([systemId, createdAt])
+}

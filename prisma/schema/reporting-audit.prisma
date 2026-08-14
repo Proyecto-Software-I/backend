@@ -1,0 +1,136 @@
+enum ReportType {
+  DISCOVERY
+  TECHNICAL_DEBT
+  MODERNIZATION_ASSESSMENT
+  MODERNIZATION_PLAN
+  MIGRATION
+  VALIDATION
+  EXECUTIVE
+  COMPLIANCE
+  CUSTOM
+}
+
+enum ReportStatus {
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+  EXPIRED
+}
+
+enum ReportFormat {
+  PDF
+  HTML
+  JSON
+  CSV
+  DOCX
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  ACTION_REQUIRED
+}
+
+enum SecurityEventSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Report {
+  id                   String       @id @default(uuid()) @db.Uuid
+  organizationId       String       @db.Uuid
+  projectId            String?      @db.Uuid
+  systemId             String?      @db.Uuid
+  type                 ReportType
+  status               ReportStatus @default(QUEUED)
+  format               ReportFormat
+  name                 String       @db.VarChar(220)
+  version              Int          @default(1)
+  parameters           Json?
+  summary              Json?
+  storageObjectId      String?      @db.Uuid
+  generatedByUserId    String?      @db.Uuid
+  generatedByAiRunId   String?      @db.Uuid
+  expiresAt            DateTime?    @db.Timestamptz(6)
+  generatedAt          DateTime?    @db.Timestamptz(6)
+  createdAt            DateTime     @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  system       LegacySystem? @relation(fields: [systemId], references: [id], onDelete: SetNull)
+  storageObject StorageObject? @relation("ReportArtifact", fields: [storageObjectId], references: [id], onDelete: SetNull)
+  generatedBy   User?          @relation("ReportGenerator", fields: [generatedByUserId], references: [id], onDelete: SetNull)
+  generatedByAi AIRun?         @relation("ReportAiRun", fields: [generatedByAiRunId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, type, createdAt])
+  @@index([projectId])
+  @@index([systemId])
+}
+
+model Notification {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  type           NotificationType
+  title          String           @db.VarChar(220)
+  body           String
+  actionUrl      String?
+  data           Json?
+  readAt         DateTime?        @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  actorUserId    String?  @db.Uuid
+  actorType      String   @db.VarChar(50)
+  action         String   @db.VarChar(180)
+  entityType     String   @db.VarChar(100)
+  entityId       String?  @db.Uuid
+  requestId      String?  @db.VarChar(100)
+  ipAddress      String?  @db.Inet
+  userAgent      String?
+  before         Json?
+  after          Json?
+  metadata       Json?
+  occurredAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actor        User?        @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, occurredAt])
+}
+
+model SecurityEvent {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @db.Uuid
+  userId         String?               @db.Uuid
+  type           String                @db.VarChar(150)
+  severity       SecurityEventSeverity
+  ipAddress      String?               @db.Inet
+  userAgent      String?
+  details        Json?
+  resolvedAt     DateTime?             @db.Timestamptz(6)
+  createdAt      DateTime              @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, severity, createdAt])
+  @@index([userId, createdAt])
+}

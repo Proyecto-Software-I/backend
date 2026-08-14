@@ -1,0 +1,251 @@
+enum KnowledgeNodeKind {
+  SYSTEM
+  APPLICATION
+  MODULE
+  PROGRAM
+  CLASS
+  INTERFACE
+  FUNCTION
+  METHOD
+  PARAGRAPH
+  ENDPOINT
+  JOB
+  QUEUE
+  TOPIC
+  DATABASE
+  TABLE
+  VIEW
+  PROCEDURE
+  FILE
+  COPYBOOK
+  JCL_JOB
+  CICS_TRANSACTION
+  SCREEN
+  EXTERNAL_SYSTEM
+  API
+  BUSINESS_RULE
+  OTHER
+}
+
+enum KnowledgeEdgeKind {
+  CONTAINS
+  CALLS
+  IMPORTS
+  DEPENDS_ON
+  READS
+  WRITES
+  EXECUTES
+  TRIGGERS
+  PRODUCES
+  CONSUMES
+  EXPOSES
+  IMPLEMENTS
+  INHERITS
+  USES
+  REFERENCES
+  FLOWS_TO
+  MAPS_TO
+  OTHER
+}
+
+enum RuleCriticality {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RuleReviewStatus {
+  DETECTED
+  REVIEWED
+  APPROVED
+  REJECTED
+}
+
+enum ProcessStepType {
+  START
+  ACTION
+  DECISION
+  DATA_ACCESS
+  EXTERNAL_CALL
+  END
+}
+
+model SystemDomain {
+  id          String   @id @default(uuid()) @db.Uuid
+  systemId    String   @db.Uuid
+  snapshotId  String   @db.Uuid
+  parentId    String?  @db.Uuid
+  code        String   @db.VarChar(120)
+  name        String   @db.VarChar(180)
+  description String?
+  riskScore   Decimal? @db.Decimal(5, 2)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  system   LegacySystem   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot SourceSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  parent   SystemDomain?  @relation("DomainHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children SystemDomain[] @relation("DomainHierarchy")
+  nodes    DomainNode[]
+
+  @@unique([systemId, snapshotId, code])
+  @@index([systemId, parentId])
+}
+
+model DomainNode {
+  domainId String   @db.Uuid
+  nodeId   String   @db.Uuid
+  weight   Decimal? @db.Decimal(8, 4)
+  metadata Json?
+
+  domain SystemDomain  @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  node   KnowledgeNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([domainId, nodeId])
+}
+
+model KnowledgeNode {
+  id            String            @id @default(uuid()) @db.Uuid
+  systemId      String            @db.Uuid
+  snapshotId    String            @db.Uuid
+  sourceFileId  String?           @db.Uuid
+  kind          KnowledgeNodeKind
+  stableKey     String            @db.VarChar(500)
+  name          String            @db.VarChar(300)
+  qualifiedName String?
+  signature     String?
+  language      String?           @db.VarChar(100)
+  lineStart     Int?
+  lineEnd       Int?
+  checksum      String?           @db.VarChar(128)
+  attributes    Json?
+  confidence    Decimal?          @db.Decimal(5, 2)
+  createdAt     DateTime          @default(now()) @db.Timestamptz(6)
+
+  system        LegacySystem           @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot      SourceSnapshot         @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  sourceFile    SourceFile?            @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+  outgoingEdges KnowledgeEdge[]        @relation("KnowledgeEdgeFrom")
+  incomingEdges KnowledgeEdge[]        @relation("KnowledgeEdgeTo")
+  domains       DomainNode[]
+  ruleEvidence         BusinessRuleEvidence[]
+  enteredProcesses     BusinessProcess[]     @relation("BusinessProcessEntryNode")
+  businessProcessSteps BusinessProcessStep[] @relation("BusinessProcessStepNode")
+  migrationUnits       MigrationUnit[]       @relation("MigrationUnitSourceNode")
+  architectureComponents ArchitectureComponent[] @relation("ArchitectureComponentSourceNode")
+
+  @@unique([snapshotId, stableKey])
+  @@index([systemId, kind])
+  @@index([snapshotId, kind])
+  @@index([sourceFileId])
+}
+
+model KnowledgeEdge {
+  id         String            @id @default(uuid()) @db.Uuid
+  systemId   String            @db.Uuid
+  snapshotId String            @db.Uuid
+  fromNodeId String            @db.Uuid
+  toNodeId   String            @db.Uuid
+  kind       KnowledgeEdgeKind
+  label      String?           @db.VarChar(200)
+  attributes Json?
+  confidence Decimal?          @db.Decimal(5, 2)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(6)
+
+  system   LegacySystem   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot SourceSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  fromNode KnowledgeNode  @relation("KnowledgeEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode   KnowledgeNode  @relation("KnowledgeEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, fromNodeId, toNodeId, kind])
+  @@index([fromNodeId, kind])
+  @@index([toNodeId, kind])
+}
+
+model BusinessRule {
+  id               String           @id @default(uuid()) @db.Uuid
+  systemId         String           @db.Uuid
+  snapshotId       String           @db.Uuid
+  stableKey        String           @db.VarChar(300)
+  name             String           @db.VarChar(250)
+  description      String
+  category         String?          @db.VarChar(120)
+  criticality      RuleCriticality  @default(MEDIUM)
+  reviewStatus     RuleReviewStatus @default(DETECTED)
+  expression       Json?
+  inputs           Json?
+  outputs          Json?
+  confidence       Decimal?         @db.Decimal(5, 2)
+  reviewedByUserId String?          @db.Uuid
+  reviewedAt       DateTime?        @db.Timestamptz(6)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(6)
+
+  system     LegacySystem           @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot   SourceSnapshot         @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  reviewedBy User?                  @relation("BusinessRuleReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  evidence   BusinessRuleEvidence[]
+  processSteps BusinessProcessStep[]
+
+  @@unique([snapshotId, stableKey])
+  @@index([systemId, criticality])
+}
+
+model BusinessRuleEvidence {
+  id              String   @id @default(uuid()) @db.Uuid
+  businessRuleId  String   @db.Uuid
+  sourceFileId    String?  @db.Uuid
+  knowledgeNodeId String?  @db.Uuid
+  lineStart       Int?
+  lineEnd         Int?
+  excerptHash     String?  @db.VarChar(128)
+  evidence        Json?
+  confidence      Decimal? @db.Decimal(5, 2)
+
+  businessRule  BusinessRule   @relation(fields: [businessRuleId], references: [id], onDelete: Cascade)
+  sourceFile    SourceFile?    @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+  knowledgeNode KnowledgeNode? @relation(fields: [knowledgeNodeId], references: [id], onDelete: SetNull)
+
+  @@index([businessRuleId])
+  @@index([sourceFileId])
+}
+
+model BusinessProcess {
+  id          String          @id @default(uuid()) @db.Uuid
+  systemId    String          @db.Uuid
+  snapshotId  String          @db.Uuid
+  stableKey   String          @db.VarChar(300)
+  name        String          @db.VarChar(250)
+  description String?
+  criticality RuleCriticality @default(MEDIUM)
+  entryNodeId String?         @db.Uuid
+  metadata    Json?
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+
+  system    LegacySystem          @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot  SourceSnapshot        @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  entryNode KnowledgeNode?        @relation("BusinessProcessEntryNode", fields: [entryNodeId], references: [id], onDelete: SetNull)
+  steps     BusinessProcessStep[]
+
+  @@unique([snapshotId, stableKey])
+  @@index([systemId, criticality])
+}
+
+model BusinessProcessStep {
+  id                String          @id @default(uuid()) @db.Uuid
+  businessProcessId String          @db.Uuid
+  sequence          Int
+  type              ProcessStepType
+  name              String          @db.VarChar(220)
+  knowledgeNodeId   String?         @db.Uuid
+  businessRuleId    String?         @db.Uuid
+  description       String?
+  metadata          Json?
+
+  businessProcess BusinessProcess @relation(fields: [businessProcessId], references: [id], onDelete: Cascade)
+  knowledgeNode   KnowledgeNode?  @relation("BusinessProcessStepNode", fields: [knowledgeNodeId], references: [id], onDelete: SetNull)
+  businessRule    BusinessRule?   @relation(fields: [businessRuleId], references: [id], onDelete: SetNull)
+
+  @@unique([businessProcessId, sequence])
+}

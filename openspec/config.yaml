@@ -12,8 +12,10 @@ context: |
   GitHub Issues define assignment, scope and acceptance criteria.
   AGENTS.md defines permanent repository constraints.
   Pull requests use Rebase and merge.
-  Application code must not be implemented before the planning Draft PR has
-  been reviewed and explicitly approved by the repository maintainer.
+  For changes where OpenSpec is required, application code must not be implemented
+  before the planning artifacts have been reviewed according to the team workflow.
+  Organization is the tenant boundary; tenant-scoped access must always verify the
+  active organization and never rely on a resource UUID alone.
 
 rules:
   proposal:
@@ -38,6 +40,7 @@ rules:
     - Explain every new dependency.
     - Include security considerations when applicable.
     - Include migration and rollback considerations for database changes.
+    - For tenant-scoped features, include organization ownership and cross-tenant denial scenarios.
     - Identify affected Swagger documentation and tests.
 
   tasks:

@@ -1,0 +1,101 @@
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  RETRYING
+  CANCELED
+  DEAD_LETTER
+}
+
+enum WorkerStatus {
+  ONLINE
+  BUSY
+  DEGRADED
+  OFFLINE
+  DRAINING
+}
+
+enum JobLogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+model WorkerNode {
+  id                   String       @id @default(uuid()) @db.Uuid
+  organizationId       String?      @db.Uuid
+  deploymentInstanceId String?      @db.Uuid
+  name                 String       @db.VarChar(150)
+  workerKey            String       @unique @db.VarChar(160)
+  status               WorkerStatus @default(OFFLINE)
+  version              String?      @db.VarChar(80)
+  capabilities         Json?
+  concurrency          Int          @default(1)
+  metadata             Json?
+  lastHeartbeatAt      DateTime?    @db.Timestamptz(6)
+  createdAt            DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime     @updatedAt @db.Timestamptz(6)
+
+  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  deploymentInstance DeploymentInstance? @relation(fields: [deploymentInstanceId], references: [id], onDelete: SetNull)
+  jobs               Job[]
+
+  @@index([status])
+  @@index([organizationId])
+}
+
+model Job {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  workerId       String?   @db.Uuid
+  queue          String    @db.VarChar(120)
+  type           String    @db.VarChar(160)
+  status         JobStatus @default(QUEUED)
+  priority       Int       @default(0)
+  projectId      String?   @db.Uuid
+  systemId       String?   @db.Uuid
+  subjectType    String?   @db.VarChar(80)
+  subjectId      String?   @db.Uuid
+  idempotencyKey String?   @unique
+  payload        Json?
+  result         Json?
+  progress       Decimal?  @db.Decimal(5, 2)
+  attempt        Int       @default(0)
+  maxAttempts    Int       @default(3)
+  scheduledAt    DateTime? @db.Timestamptz(6)
+  lockedAt       DateTime? @db.Timestamptz(6)
+  startedAt      DateTime? @db.Timestamptz(6)
+  completedAt    DateTime? @db.Timestamptz(6)
+  error          String?
+  traceId        String?   @db.VarChar(100)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  worker       WorkerNode?   @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  system       LegacySystem? @relation(fields: [systemId], references: [id], onDelete: SetNull)
+  aiRuns       AIRun[]
+  logs         JobLog[]
+
+  @@index([queue, status, priority])
+  @@index([organizationId, status, createdAt])
+  @@index([projectId])
+  @@index([systemId])
+  @@index([subjectType, subjectId])
+}
+
+model JobLog {
+  id        String      @id @default(uuid()) @db.Uuid
+  jobId     String      @db.Uuid
+  level     JobLogLevel
+  message   String
+  data      Json?
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+}

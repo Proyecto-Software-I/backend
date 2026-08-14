@@ -48,3 +48,7 @@ temp/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Prisma Client generado
+
+/src/generated/prisma/

@@ -1,0 +1,284 @@
+enum AnalysisType {
+  FULL_DISCOVERY
+  INVENTORY
+  STATIC_ANALYSIS
+  DEPENDENCY_ANALYSIS
+  ARCHITECTURE_DISCOVERY
+  BUSINESS_RULE_EXTRACTION
+  TEST_COVERAGE
+  TECHNICAL_DEBT
+  SECURITY
+  MODERNIZATION_READINESS
+  CUSTOM
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  CANCELED
+}
+
+enum FindingCategory {
+  TECHNICAL_DEBT
+  SECURITY
+  DEPENDENCY
+  MAINTAINABILITY
+  COMPLEXITY
+  ARCHITECTURE
+  TESTABILITY
+  PERFORMANCE
+  DATA
+  COMPLIANCE
+  MIGRATION_RISK
+  OTHER
+}
+
+enum FindingSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FindingStatus {
+  OPEN
+  ACKNOWLEDGED
+  ACCEPTED_RISK
+  RESOLVED
+  FALSE_POSITIVE
+}
+
+enum RecommendationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AssessmentStatus {
+  DRAFT
+  COMPLETED
+  SUPERSEDED
+}
+
+enum ModernizationStrategy {
+  KEEP
+  STABILIZE
+  ENCAPSULATE
+  REHOST
+  REPLATFORM
+  REFACTOR
+  REARCHITECT
+  REWRITE
+  REPLACE
+  RETIRE
+}
+
+model AnalysisRule {
+  id              String          @id @default(uuid()) @db.Uuid
+  key             String          @db.VarChar(160)
+  version         String          @db.VarChar(50)
+  name            String          @db.VarChar(200)
+  category        FindingCategory
+  defaultSeverity FindingSeverity
+  description     String?
+  parameters      Json?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+
+  findings Finding[]
+
+  @@unique([key, version])
+  @@index([category, isActive])
+}
+
+model AssessmentMethodology {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @db.VarChar(120)
+  version     String   @db.VarChar(50)
+  name        String   @db.VarChar(180)
+  description String?
+  weights     Json
+  formula     Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  assessments Assessment[]
+
+  @@unique([key, version])
+}
+
+model AnalysisRun {
+  id                String       @id @default(uuid()) @db.Uuid
+  projectId         String       @db.Uuid
+  systemId          String       @db.Uuid
+  snapshotId        String?      @db.Uuid
+  type              AnalysisType
+  status            RunStatus    @default(QUEUED)
+  requestedByUserId String?      @db.Uuid
+  configuration     Json?
+  engineVersions    Json?
+  progress          Decimal?     @db.Decimal(5, 2)
+  summary           Json?
+  error             String?
+  startedAt         DateTime?    @db.Timestamptz(6)
+  completedAt       DateTime?    @db.Timestamptz(6)
+  createdAt         DateTime     @default(now()) @db.Timestamptz(6)
+
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  system      LegacySystem     @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  snapshot    SourceSnapshot?  @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  requestedBy User?            @relation("AnalysisRunRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  stages      AnalysisStage[]
+  findings    Finding[]
+  metrics     AnalysisMetric[]
+  assessment  Assessment?
+  aiRuns      AIRun[]
+
+  @@index([projectId, status, createdAt])
+  @@index([systemId, type, createdAt])
+  @@index([snapshotId])
+}
+
+model AnalysisStage {
+  id            String    @id @default(uuid()) @db.Uuid
+  analysisRunId String    @db.Uuid
+  key           String    @db.VarChar(120)
+  name          String    @db.VarChar(180)
+  sequence      Int
+  status        RunStatus @default(QUEUED)
+  progress      Decimal?  @db.Decimal(5, 2)
+  result        Json?
+  error         String?
+  startedAt     DateTime? @db.Timestamptz(6)
+  completedAt   DateTime? @db.Timestamptz(6)
+
+  analysisRun AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisRunId, key])
+  @@index([analysisRunId, sequence])
+}
+
+model Finding {
+  id               String          @id @default(uuid()) @db.Uuid
+  analysisRunId    String          @db.Uuid
+  sourceFileId     String?         @db.Uuid
+  ruleId           String?         @db.Uuid
+  ruleKey          String?         @db.VarChar(160)
+  fingerprint      String?         @db.VarChar(128)
+  category         FindingCategory
+  severity         FindingSeverity
+  status           FindingStatus   @default(OPEN)
+  title            String          @db.VarChar(250)
+  description      String?
+  remediation      String?
+  evidence         Json?
+  confidence       Decimal?        @db.Decimal(5, 2)
+  lineStart        Int?
+  lineEnd          Int?
+  assignedToUserId String?         @db.Uuid
+  resolvedAt       DateTime?       @db.Timestamptz(6)
+  createdAt        DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(6)
+
+  analysisRun AnalysisRun   @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  sourceFile  SourceFile?   @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+  rule        AnalysisRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  assignedTo  User?         @relation("FindingAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([analysisRunId, severity, status])
+  @@index([sourceFileId])
+  @@index([ruleId])
+  @@index([fingerprint])
+}
+
+model AnalysisMetric {
+  id            String   @id @default(uuid()) @db.Uuid
+  analysisRunId String   @db.Uuid
+  scopeType     String   @db.VarChar(80)
+  scopeId       String?  @db.Uuid
+  key           String   @db.VarChar(160)
+  numericValue  Decimal? @db.Decimal(30, 8)
+  textValue     String?
+  jsonValue     Json?
+  unit          String?  @db.VarChar(50)
+  metadata      Json?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  analysisRun AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+
+  @@index([analysisRunId, key])
+  @@index([scopeType, scopeId])
+}
+
+model Assessment {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  analysisRunId       String                 @unique @db.Uuid
+  methodologyId       String                 @db.Uuid
+  status              AssessmentStatus       @default(DRAFT)
+  technicalDebtScore  Decimal?               @db.Decimal(5, 2)
+  readinessScore      Decimal?               @db.Decimal(5, 2)
+  complexityScore     Decimal?               @db.Decimal(5, 2)
+  riskScore           Decimal?               @db.Decimal(5, 2)
+  knowledgeCoverage   Decimal?               @db.Decimal(5, 2)
+  testCoverage        Decimal?               @db.Decimal(5, 2)
+  recommendedStrategy ModernizationStrategy?
+  executiveSummary    String?
+  generatedAt         DateTime?              @db.Timestamptz(6)
+  createdAt           DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime               @updatedAt @db.Timestamptz(6)
+
+  analysisRun     AnalysisRun                   @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  methodology     AssessmentMethodology         @relation(fields: [methodologyId], references: [id], onDelete: Restrict)
+  scores          AssessmentScore[]
+  recommendations     ModernizationRecommendation[]
+  modernizationPlans ModernizationPlan[]
+
+  @@index([methodologyId, status])
+}
+
+model AssessmentScore {
+  id           String   @id @default(uuid()) @db.Uuid
+  assessmentId String   @db.Uuid
+  key          String   @db.VarChar(120)
+  label        String   @db.VarChar(180)
+  score        Decimal  @db.Decimal(5, 2)
+  weight       Decimal? @db.Decimal(8, 4)
+  explanation  String?
+  evidence     Json?
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, key])
+}
+
+model ModernizationRecommendation {
+  id               String                 @id @default(uuid()) @db.Uuid
+  assessmentId     String                 @db.Uuid
+  targetType       String                 @db.VarChar(80)
+  targetId         String?                @db.Uuid
+  title            String                 @db.VarChar(220)
+  strategy         ModernizationStrategy
+  priority         RecommendationPriority
+  rationale        String
+  sourceStack      Json?
+  targetStack      Json?
+  expectedBenefits Json?
+  dependencies     Json?
+  estimatedEffort  Json?
+  estimatedCost    Decimal?               @db.Decimal(20, 4)
+  currency         String?                @db.VarChar(3)
+  riskScore        Decimal?               @db.Decimal(5, 2)
+  migrationPackId  String?                @db.Uuid
+  createdAt        DateTime               @default(now()) @db.Timestamptz(6)
+
+  assessment    Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  migrationPack MigrationPack? @relation(fields: [migrationPackId], references: [id], onDelete: SetNull)
+
+  @@index([assessmentId, priority])
+  @@index([migrationPackId])
+}

@@ -1,0 +1,131 @@
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  PAUSED
+  CANCELED
+  EXPIRED
+}
+
+enum FeatureValueType {
+  BOOLEAN
+  INTEGER
+  DECIMAL
+  STRING
+}
+
+model BillingPlan {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(120)
+  description String?
+  isPublic    Boolean  @default(true)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  prices        BillingPrice[]
+  entitlements  PlanEntitlement[]
+  subscriptions Subscription[]
+}
+
+model BillingPrice {
+  id              String          @id @default(uuid()) @db.Uuid
+  planId          String          @db.Uuid
+  externalPriceId String?         @unique
+  currency        String          @db.VarChar(3)
+  interval        BillingInterval
+  unitAmount      Decimal         @db.Decimal(20, 4)
+  includedSeats   Int             @default(1)
+  seatUnitAmount  Decimal?        @db.Decimal(20, 4)
+  usagePricing    Json?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+
+  plan          BillingPlan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+  subscriptions Subscription[]
+
+  @@index([planId, interval])
+}
+
+model Feature {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique @db.VarChar(120)
+  name        String           @db.VarChar(150)
+  description String?
+  valueType   FeatureValueType
+  createdAt   DateTime         @default(now()) @db.Timestamptz(6)
+
+  entitlements PlanEntitlement[]
+}
+
+model PlanEntitlement {
+  id           String   @id @default(uuid()) @db.Uuid
+  planId       String   @db.Uuid
+  featureId    String   @db.Uuid
+  enabled      Boolean  @default(true)
+  integerLimit BigInt?
+  decimalLimit Decimal? @db.Decimal(24, 6)
+  stringValue  String?
+  metadata     Json?
+
+  plan    BillingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  feature Feature     @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureId])
+}
+
+model Subscription {
+  id                     String             @id @default(uuid()) @db.Uuid
+  organizationId         String             @db.Uuid
+  planId                 String             @db.Uuid
+  priceId                String?            @db.Uuid
+  provider               String?            @db.VarChar(50)
+  externalCustomerId     String?
+  externalSubscriptionId String?            @unique
+  status                 SubscriptionStatus @default(TRIALING)
+  seatQuantity           Int                @default(1)
+  currentPeriodStart     DateTime?           @db.Timestamptz(6)
+  currentPeriodEnd       DateTime?           @db.Timestamptz(6)
+  trialEndsAt            DateTime?           @db.Timestamptz(6)
+  cancelAtPeriodEnd      Boolean            @default(false)
+  canceledAt             DateTime?           @db.Timestamptz(6)
+  metadata               Json?
+  createdAt              DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime           @updatedAt @db.Timestamptz(6)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  plan         BillingPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  price        BillingPrice? @relation(fields: [priceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([planId])
+}
+
+model UsageEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  metricKey      String   @db.VarChar(120)
+  quantity       Decimal  @db.Decimal(24, 6)
+  unit           String?  @db.VarChar(50)
+  projectId      String?  @db.Uuid
+  systemId       String?  @db.Uuid
+  idempotencyKey String?  @unique
+  dimensions     Json?
+  occurredAt     DateTime @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  system       LegacySystem? @relation(fields: [systemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, metricKey, occurredAt])
+  @@index([projectId])
+  @@index([systemId])
+}

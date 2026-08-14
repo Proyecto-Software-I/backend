@@ -9,9 +9,11 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
-  const port = configService.get<number>('PORT') ?? 3000;
+  const port = configService.get<number>('PORT') ?? 3001;
   const frontendUrl =
-    configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+    configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
+
+  app.enableShutdownHooks();
 
   // Middleware de cabeceras de seguridad
   app.use(helmet());
@@ -32,9 +34,9 @@ async function bootstrap(): Promise<void> {
   );
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Proyecto Software I API')
+    .setTitle('LegacyLift AI API')
     .setDescription(
-      'Documentación de la API del backend de Proyecto-Software-I',
+      'API de LegacyLift AI para análisis y modernización asistida de sistemas legados',
     )
     .setVersion('1.0')
     .build();
