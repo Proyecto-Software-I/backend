@@ -1,37 +1,31 @@
-# LegacyLift AI — Backend
+<div align="center">
 
-Backend de LegacyLift AI, una plataforma B2B multi-tenant para descubrir, analizar y modernizar sistemas legados de forma progresiva y verificable.
+<img src="https://nestjs.com/img/logo-small.svg" width="110" alt="Logo de NestJS" />
 
-## Stack actual
+# Proyecto Software I — Backend
 
-- Node.js 24
-- NestJS 11
-- TypeScript
-- PostgreSQL 17
-- Prisma ORM 7
-- Swagger/OpenAPI
-- OpenSpec
+API REST de **Proyecto-Software-I**, desarrollada con NestJS, TypeScript, Prisma y PostgreSQL.
 
-El repositorio contiene únicamente la infraestructura necesaria para comenzar el desarrollo. Redis, object storage real, proveedores de IA y otras piezas se incorporarán cuando entren en alcance mediante una issue/OpenSpec.
+[![NestJS](https://img.shields.io/badge/NestJS-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-24_LTS-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![Estado](https://img.shields.io/badge/estado-en_desarrollo-yellow)](#estado-del-proyecto)
 
-## Requisitos locales
+</div>
 
-- Windows
-- Node.js 24 (`.nvmrc` incluido)
-- npm 10+
-- PostgreSQL 17 instalado y ejecutándose como servicio de Windows
-- Git
+---
 
-Docker no es necesario para el desarrollo local.
+## Descripción
 
-<<<<<<< Updated upstream
 La aplicación está construida con [NestJS](https://nestjs.com/) y se encarga de proporcionar:
 
 * La API utilizada por el frontend.
 * La lógica de negocio.
 * La validación de datos.
 * La autenticación y autorización.
-* El acceso a la base de datos.
+* El acceso a PostgreSQL mediante Prisma.
 * La documentación de los endpoints.
 
 El frontend se mantiene en un repositorio separado:
@@ -43,6 +37,8 @@ El frontend se mantiene en un repositorio separado:
 * [Node.js](https://nodejs.org/)
 * [NestJS](https://nestjs.com/)
 * [TypeScript](https://www.typescriptlang.org/)
+* [PostgreSQL](https://www.postgresql.org/)
+* [Prisma ORM](https://www.prisma.io/)
 * [Joi](https://joi.dev/)
 * [class-validator](https://github.com/typestack/class-validator)
 * [class-transformer](https://github.com/typestack/class-transformer)
@@ -56,6 +52,7 @@ Antes de instalar el proyecto necesitas:
 * Node.js 24 LTS.
 * npm.
 * Git.
+* PostgreSQL.
 * OpenSpec CLI.
 
 Puedes comprobar las versiones instaladas con:
@@ -64,8 +61,11 @@ Puedes comprobar las versiones instaladas con:
 node --version
 npm --version
 git --version
+psql --version
 openspec --version
-```
+````
+
+> El proyecto incluye un archivo `.nvmrc` con la versión de Node.js utilizada por el equipo.
 
 ## Instalación
 
@@ -94,23 +94,48 @@ Comprueba la instalación:
 openspec --version
 ```
 
+## Configuración inicial
+
+El proyecto utiliza PostgreSQL instalado localmente durante el desarrollo.
+
+Asegúrate de que el servicio de PostgreSQL esté iniciado y ejecuta:
+
+```bash
+npm run setup
+```
+
+La primera vez, este comando:
+
+1. Crea `.env` desde `.env.example` si todavía no existe.
+2. Genera Prisma Client.
+3. Crea la base de datos si es necesario.
+4. Aplica las migraciones.
+5. Ejecuta el seed inicial.
+
+Si tu usuario o contraseña de PostgreSQL son diferentes, ajusta `DATABASE_URL` dentro de `.env`.
+
 ## Variables de entorno
 
-Crea un archivo `.env` a partir de `.env.example`.
+El archivo `.env` contiene configuración local y **no debe subirse al repositorio**.
 
-### Variables disponibles
+Las variables principales son:
 
-| Variable       | Descripción                        | Valor predeterminado    |
-| -------------- | ---------------------------------- | ----------------------- |
-| `NODE_ENV`     | Entorno de ejecución               | `development`           |
-| `PORT`         | Puerto utilizado por la aplicación | `3000`                  |
-| `FRONTEND_URL` | Origen autorizado mediante CORS    | `http://localhost:5173` |
-
-El archivo `.env` contiene configuración local y no debe subirse al repositorio.
+| Variable       | Descripción                    | Valor predeterminado    |
+| -------------- | ------------------------------ | ----------------------- |
+| `NODE_ENV`     | Entorno de ejecución           | `development`           |
+| `PORT`         | Puerto del backend             | `3001`                  |
+| `FRONTEND_URL` | Origen permitido mediante CORS | `http://localhost:3000` |
+| `DATABASE_URL` | Conexión a PostgreSQL          | Ver `.env.example`      |
 
 Las nuevas variables necesarias para ejecutar el proyecto deben agregarse también a `.env.example`, sin incluir valores sensibles.
 
 ## Ejecutar el proyecto
+
+### Desarrollo con recarga automática
+
+```bash
+npm run start:dev
+```
 
 ### Desarrollo
 
@@ -118,175 +143,119 @@ Las nuevas variables necesarias para ejecutar el proyecto deben agregarse tambi�
 npm run start
 ```
 
-### Desarrollo con recarga automática
-=======
-## Primer arranque
->>>>>>> Stashed changes
+### Depuración
 
 ```bash
-npm ci
-npm run setup
-npm run start:dev
+npm run start:debug
 ```
 
-Si `.env` no existe, `npm run setup` solicita en consola las credenciales de PostgreSQL de esa máquina y crea el archivo automáticamente. Si `.env` ya existe, lo conserva.
-
-Después el setup:
-
-1. genera Prisma Client;
-2. verifica si la base indicada en `DATABASE_URL` existe y la crea cuando sea necesario;
-3. aplica las migraciones versionadas;
-4. ejecuta el seed idempotente.
-
-Para crear automáticamente la base, el usuario PostgreSQL usado en `DATABASE_URL` debe tener permiso `CREATEDB`. El usuario local `postgres` normalmente lo tiene.
-
-Servicios locales:
-
-```text
-API:      http://localhost:3001/api
-Health:   http://localhost:3001/api/health
-Swagger:  http://localhost:3001/docs
-Frontend: http://localhost:3000
-Postgres: localhost:5432
-```
-
-## Variables locales
-
-Cada desarrollador tiene su propio `.env` y puede usar una contraseña PostgreSQL distinta. `.env` no se versiona.
-
-Ejemplo:
-
-```env
-NODE_ENV=development
-PORT=3001
-FRONTEND_URL=http://localhost:3000
-DATABASE_URL="postgresql://postgres:MI_PASSWORD@localhost:5432/legacylift"
-```
-
-`.env.example` sí se versiona únicamente como referencia.
-
-## Reconstruir la BD local
-
-Si la base local contiene una estructura anterior o quieres reconstruirla completamente desde las migraciones:
+### Producción
 
 ```bash
-npm run db:fresh
-```
-
-`db:fresh` ejecuta `prisma migrate reset --force`, por lo que **borra todos los datos de la base indicada en tu `DATABASE_URL`** y vuelve a aplicar migraciones + seed.
-
-Usarlo únicamente contra una base local descartable. Nunca contra la futura BD compartida de desarrollo, staging o producción.
-
-## Comandos útiles
-
-### Aplicación
-
-```bash
-npm run start:dev
 npm run build
 npm run start:prod
 ```
 
-### Calidad
+## API
+
+Con la configuración predeterminada, el backend estará disponible en:
+
+```text
+http://localhost:3001
+```
+
+Todos los endpoints utilizan el prefijo:
+
+```text
+/api
+```
+
+### Comprobar el estado
+
+```http
+GET /api/health
+```
+
+Dirección completa:
+
+```text
+http://localhost:3001/api/health
+```
+
+Respuesta esperada:
+
+```json
+{
+  "status": "ok",
+  "service": "legacylift-backend"
+}
+```
+
+## Swagger
+
+La documentación interactiva de la API está disponible en:
+
+```text
+http://localhost:3001/docs
+```
+
+## Base de datos
+
+### Abrir Prisma Studio
 
 ```bash
-npm run lint
-npm run lint:fix
-npm test
-npm run test:e2e
-npm run check:code
+npm run db:studio
+```
+
+### Aplicar migraciones existentes
+
+```bash
+npm run db:deploy
+```
+
+### Crear una nueva migración
+
+Después de modificar el schema de Prisma:
+
+```bash
+npm run db:migrate -- --name nombre_del_cambio
+```
+
+### Reiniciar la base local
+
+> Este comando elimina todos los datos de la base configurada en `DATABASE_URL`.
+
+```bash
+npm run db:fresh
+```
+
+## Scripts principales
+
+| Comando              | Descripción                                   |
+| -------------------- | --------------------------------------------- |
+| `npm run setup`      | Configura el entorno local y la base de datos |
+| `npm run start:dev`  | Inicia NestJS con recarga automática          |
+| `npm run build`      | Compila el proyecto                           |
+| `npm run lint`       | Analiza el código                             |
+| `npm run format`     | Formatea el código                            |
+| `npm run test`       | Ejecuta pruebas unitarias                     |
+| `npm run test:e2e`   | Ejecuta pruebas E2E                           |
+| `npm run db:studio`  | Abre Prisma Studio                            |
+| `npm run db:migrate` | Crea una migración de desarrollo              |
+| `npm run db:deploy`  | Aplica migraciones existentes                 |
+| `npm run db:fresh`   | Reconstruye la base local                     |
+| `npm run check`      | Ejecuta las verificaciones del proyecto       |
+
+## Verificación del proyecto
+
+Antes de subir cambios importantes:
+
+```bash
 npm run check
 ```
 
-### Prisma/PostgreSQL
+## Contribución
 
-```bash
-npm run db:ensure
-npm run db:setup
-npm run db:fresh
-npm run db:migrate -- --name descripcion
-npm run db:deploy
-npm run db:seed
-npm run db:studio
-npm run prisma:format
-npm run prisma:validate
-npm run prisma:generate
-```
+Las reglas de trabajo del repositorio, incluyendo ramas, commits, Issues, OpenSpec, Pull Requests y revisiones, se encuentran en:
 
-Uso recomendado:
-
-- `db:setup`: primer arranque local o preparación de una BD vacía.
-- `db:migrate -- --name ...`: crear una migración después de cambiar el schema Prisma; solo en una BD local del desarrollador.
-- `db:deploy`: aplicar migraciones que ya existen en el repositorio.
-- `db:fresh`: destruir y reconstruir únicamente la BD local.
-- `db:studio`: inspeccionar datos visualmente.
-
-Cuando exista una BD de desarrollo hosteada, se cambiará únicamente `DATABASE_URL` y se aplicarán migraciones existentes con `db:deploy`; no se usará `migrate dev` ni `db:fresh` contra esa BD compartida.
-
-### OpenSpec
-
-```bash
-npm run spec:list
-npm run spec:validate
-npm run spec:view
-```
-
-## Estructura relevante
-
-```text
-src/
-├── generated/prisma/       # generado; no se versiona
-├── prisma/
-│   ├── prisma.module.ts
-│   └── prisma.service.ts
-├── app.controller.ts
-├── app.module.ts
-└── main.ts
-
-prisma/
-├── migrations/
-├── schema/
-└── seed.ts
-
-scripts/
-├── setup.mjs
-└── db-ensure.mjs
-
-docs/architecture/
-├── database.md
-└── multi-tenancy.md
-```
-
-## Arquitectura de datos
-
-`Organization` es la frontera de tenant. Las reglas completas están en:
-
-- [`AGENTS.md`](AGENTS.md)
-- [`docs/architecture/multi-tenancy.md`](docs/architecture/multi-tenancy.md)
-- [`docs/architecture/database.md`](docs/architecture/database.md)
-
-Regla esencial: conocer el UUID de un recurso nunca autoriza acceder a él. Toda consulta tenant-scoped debe verificar la organización activa, directamente o mediante la cadena de ownership.
-
-## Seed inicial
-
-El seed crea únicamente catálogos del sistema:
-
-- permisos;
-- planes Developer/Team/Enterprise;
-- features y entitlements;
-- metodología inicial de assessment;
-- reglas base de análisis;
-- catálogo tecnológico;
-- Migration Packs iniciales;
-- prompts base.
-
-No crea usuarios ni contraseñas de prueba.
-
-## Flujo de colaboración
-
-Leer antes de desarrollar:
-
-- [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md): flujo humano de issues, ramas, OpenSpec y PRs.
-- [`AGENTS.md`](AGENTS.md): reglas técnicas permanentes y multi-tenancy.
-
-Las features se agregan progresivamente. La existencia de una tabla en Prisma no obliga a crear inmediatamente un módulo NestJS para ella.
+* [Guía de contribución](.github/CONTRIBUTING.md)
