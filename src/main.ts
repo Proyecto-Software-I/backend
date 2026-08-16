@@ -45,6 +45,7 @@ async function bootstrap(): Promise<void> {
       'API de LegacyLift AI para análisis y modernización asistida de sistemas legados',
     )
     .setVersion('1.0')
+    .addBearerAuth()
     .build();
 
   const documentFactory = () =>

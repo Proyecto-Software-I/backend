@@ -27,7 +27,7 @@ export class JwtAuthGuard implements CanActivate {
     const header = req.headers.authorization;
 
     if (!header || !header.startsWith('Bearer ')) {
-      throw new AuthError('UNAUTHORIZED', 401, 'Token de acceso requerido');
+      throw new AuthError('SESSION_REVOKED', 401, 'Token de acceso requerido');
     }
 
     const token = header.slice('Bearer '.length);
@@ -35,7 +35,7 @@ export class JwtAuthGuard implements CanActivate {
     try {
       payload = this.tokenService.verify(token);
     } catch {
-      throw new AuthError('UNAUTHORIZED', 401, 'Token de acceso inválido');
+      throw new AuthError('SESSION_REVOKED', 401, 'Token de acceso inválido');
     }
 
     await this.sessionService.findValidById(payload.sid);

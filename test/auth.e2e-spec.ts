@@ -97,6 +97,21 @@ describe('Auth (e2e)', () => {
       .expect(403);
   });
 
+  it('POST /api/auth/select-organization con org propia del usuario devuelve 200', async () => {
+    const loginRes = await login().expect(200);
+    const token = (loginRes.body as AuthResponse).auth.accessToken;
+    const orgId = (loginRes.body as AuthResponse).activeOrganization?.id;
+
+    const res = await request(server())
+      .post('/api/auth/select-organization')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ organizationId: orgId })
+      .expect(200);
+    const body = res.body as AuthResponse;
+    expect(body.requiresOrganizationSelection).toBe(false);
+    expect(body.activeOrganization?.id).toBe(orgId);
+  });
+
   it('POST /api/auth/refresh renueva el access token vía cookie', async () => {
     const loginRes = await login().expect(200);
     const cookieHeader = loginRes.headers['set-cookie']
@@ -112,6 +127,13 @@ describe('Auth (e2e)', () => {
     };
     expect(body.auth.accessToken).toBeDefined();
     expect(body.auth.tokenType).toBe('Bearer');
+  });
+
+  it('POST /api/auth/refresh con cookie inválida rechaza con 401', async () => {
+    await request(server())
+      .post('/api/auth/refresh')
+      .set('Cookie', 'legacylift_refresh=invalid-token')
+      .expect(401);
   });
 
   it('POST /api/auth/logout revoca la sesión (204)', async () => {
