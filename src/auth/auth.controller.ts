@@ -78,6 +78,7 @@ export class AuthController {
   }
 
   @Post('select-organization')
+  @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Seleccionar organización activa' })
@@ -121,10 +122,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cerrar sesión' })
   @ApiResponse({ status: 204, description: 'Sesión cerrada' })
-  async logout(
-    @CurrentUser() user: AuthContext,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async logout(@CurrentUser() user: AuthContext, @Res() res: Response) {
     await this.authService.logout(user.userId, user.sessionId);
     this.clearRefreshCookie(res);
     res.status(204).send();

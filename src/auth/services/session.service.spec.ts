@@ -125,6 +125,10 @@ describe('SessionService', () => {
 
       const result = await service.findByRefreshTokenHash('rh');
 
+      expect(result).not.toBeNull();
+      if (result === null) {
+        throw new Error('Expected a matching session');
+      }
       expect(result.id).toBe('s1');
       expect(prisma.userSession.findFirst).toHaveBeenCalledWith({
         where: {

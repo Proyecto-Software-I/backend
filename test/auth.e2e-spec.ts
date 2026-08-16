@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -57,7 +56,12 @@ describe('Auth (e2e)', () => {
     const body = res.body as AuthResponse;
     expect(body.requiresOrganizationSelection).toBe(false);
     expect(body.activeOrganization).not.toBeNull();
-    expect(body.activeMembership.roles).toContain('OWNER');
+    const activeMembership = body.activeMembership;
+    expect(activeMembership).not.toBeNull();
+    if (activeMembership === null) {
+      throw new Error('Expected an active membership');
+    }
+    expect(activeMembership.roles).toContain('OWNER');
     expect(body.auth.accessToken).toBeDefined();
   });
 
@@ -114,8 +118,17 @@ describe('Auth (e2e)', () => {
 
   it('POST /api/auth/refresh renueva el access token vía cookie', async () => {
     const loginRes = await login().expect(200);
-    const cookieHeader = loginRes.headers['set-cookie']
-      .map((c: string) => c.split(';')[0])
+    const rawCookies = loginRes.headers['set-cookie'] as unknown;
+    const cookies =
+      typeof rawCookies === 'string'
+        ? [rawCookies]
+        : Array.isArray(rawCookies)
+          ? rawCookies.filter(
+              (cookie): cookie is string => typeof cookie === 'string',
+            )
+          : [];
+    const cookieHeader = cookies
+      .map((cookie) => cookie.split(';')[0])
       .join('; ');
 
     const res = await request(server())
