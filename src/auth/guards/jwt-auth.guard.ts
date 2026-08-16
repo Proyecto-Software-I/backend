@@ -38,13 +38,24 @@ export class JwtAuthGuard implements CanActivate {
       throw new AuthError('SESSION_REVOKED', 401, 'Token de acceso inválido');
     }
 
-    await this.sessionService.findValidById(payload.sid);
+    const session = await this.sessionService.findValidById(payload.sid);
 
-    if (payload.org) {
+    if (
+      session.userId !== payload.sub ||
+      session.organizationId !== payload.org
+    ) {
+      throw new AuthError(
+        'SESSION_REVOKED',
+        401,
+        'El token no coincide con la sesión',
+      );
+    }
+
+    if (session.organizationId) {
       const membership = await this.prisma.organizationMembership.findFirst({
         where: {
-          userId: payload.sub,
-          organizationId: payload.org,
+          userId: session.userId,
+          organizationId: session.organizationId,
           status: MembershipStatus.ACTIVE,
         },
       });
@@ -58,9 +69,9 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     req.user = {
-      userId: payload.sub,
+      userId: session.userId,
       sessionId: payload.sid,
-      organizationId: payload.org,
+      organizationId: session.organizationId,
     };
     return true;
   }

@@ -1,4 +1,8 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import {
+  createParamDecorator,
+  ExecutionContext,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 
 export interface AuthContext {
@@ -7,25 +11,19 @@ export interface AuthContext {
   organizationId: string | null;
 }
 
+function getAuthContext(ctx: ExecutionContext): AuthContext {
+  const req = ctx.switchToHttp().getRequest<Request & { user?: AuthContext }>();
+  if (!req.user) {
+    throw new InternalServerErrorException('Contexto de autenticación ausente');
+  }
+  return req.user;
+}
+
 export const CurrentUser = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): AuthContext => {
-    const req = ctx
-      .switchToHttp()
-      .getRequest<Request & { user?: AuthContext }>();
-    const result: AuthContext = req.user ?? {
-      userId: '',
-      sessionId: '',
-      organizationId: null,
-    };
-    return result;
-  },
+  (_data: unknown, ctx: ExecutionContext): AuthContext => getAuthContext(ctx),
 );
 
 export const CurrentTenant = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): string | null => {
-    const req = ctx
-      .switchToHttp()
-      .getRequest<Request & { user?: AuthContext }>();
-    return req.user?.organizationId ?? null;
-  },
+  (_data: unknown, ctx: ExecutionContext): string | null =>
+    getAuthContext(ctx).organizationId,
 );
