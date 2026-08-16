@@ -33,6 +33,7 @@ jobs:
       PORT: 3001
       FRONTEND_URL: http://localhost:3000
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/legacylift
+      AUTH_JWT_SECRET: ci-only-test-secret-not-for-production
 
     steps:
       - name: Checkout

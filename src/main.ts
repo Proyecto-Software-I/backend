@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -18,7 +20,11 @@ async function bootstrap(): Promise<void> {
   // Middleware de cabeceras de seguridad
   app.use(helmet());
 
+  app.use(cookieParser());
+
   app.setGlobalPrefix('api');
+
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   app.enableCors({
     origin: frontendUrl,
@@ -39,6 +45,7 @@ async function bootstrap(): Promise<void> {
       'API de LegacyLift AI para análisis y modernización asistida de sistemas legados',
     )
     .setVersion('1.0')
+    .addBearerAuth()
     .build();
 
   const documentFactory = () =>
