@@ -46,21 +46,21 @@
 
 ## 6. Membership Services And Session Tenant Invalidation
 
-- [ ] 6.1 Create DTOs for membership status updates with allowed target statuses and Swagger metadata.
+- [x] 6.1 Create DTOs for membership status updates with allowed target statuses and Swagger metadata.
 - [x] 6.2 Implement current-tenant member listing with `members.read`, safe user fields, membership status, joined timestamp, and role keys.
-- [ ] 6.3 Implement membership status update with `id + organizationId` lookup and allowed transitions `ACTIVE -> SUSPENDED` and `SUSPENDED -> ACTIVE`.
-- [ ] 6.4 Implement membership removal as soft state `ACTIVE/SUSPENDED -> REMOVED` without physical delete.
-- [ ] 6.5 Implement last-active-owner protection inside a Serializable transaction with bounded P2034 retry, including self-suspend and self-remove.
-- [ ] 6.6 Implement session tenant invalidation for suspended/removed memberships inside the same transaction by setting matching non-revoked `UserSession.organizationId` to null only for the affected organization.
-- [ ] 6.7 Add unit tests for list members, suspend, reactivate, remove, REMOVED -> ACTIVE returning `MEMBERSHIP_NOT_FOUND`, cross-tenant membership not found, last-owner rejection, session tenant invalidation, and owner mutation retry behavior.
+- [x] 6.3 Implement membership status update with `id + organizationId` lookup and allowed transitions `ACTIVE -> SUSPENDED` and `SUSPENDED -> ACTIVE`.
+- [x] 6.4 Implement membership removal as soft state `ACTIVE/SUSPENDED -> REMOVED` without physical delete.
+- [x] 6.5 Implement last-active-owner protection inside a Serializable transaction with bounded P2034 retry, including self-suspend and self-remove.
+- [x] 6.6 Implement session tenant invalidation for suspended/removed memberships inside the same transaction by setting matching non-revoked `UserSession.organizationId` to null only for the affected organization.
+- [x] 6.7 Add unit tests for list members, suspend, reactivate, remove, REMOVED -> ACTIVE returning `MEMBERSHIP_NOT_FOUND`, cross-tenant membership not found, last-owner rejection, session tenant invalidation, and owner mutation retry behavior.
 
 ## 7. Controllers, Routing, And Swagger
 
-- [ ] 7.1 Implement `OrganizationsController` for `GET /api/organizations/current/members`, `GET /api/organizations/current/invitations`, `POST /api/organizations/current/invitations`, `DELETE /api/organizations/current/invitations/:invitationId`, `PATCH /api/organizations/current/members/:membershipId`, and `DELETE /api/organizations/current/members/:membershipId`.
-- [ ] 7.2 Protect administrative endpoints with `JwtAuthGuard`, `PermissionGuard`, and the required `members.read` or `members.manage` decorators.
+- [x] 7.1 Implement `OrganizationsController` for `GET /api/organizations/current/members`, `GET /api/organizations/current/invitations`, `POST /api/organizations/current/invitations`, `DELETE /api/organizations/current/invitations/:invitationId`, `PATCH /api/organizations/current/members/:membershipId`, and `DELETE /api/organizations/current/members/:membershipId`.
+- [x] 7.2 Protect administrative endpoints with `JwtAuthGuard`, `PermissionGuard`, and the required `members.read` or `members.manage` decorators.
 - [ ] 7.3 Implement `InvitationsController` for `GET /api/invitations/:token` without auth and `POST /api/invitations/:token/accept` with `JwtAuthGuard` only.
-- [ ] 7.4 Document all organization and invitation endpoints in Swagger with auth requirements, permission requirements, DTOs, responses, safe invitation list metadata, and functional errors.
-- [ ] 7.5 Verify controllers never accept or use body/query/header organization IDs for tenant authorization.
+- [x] 7.4 Document all organization and invitation endpoints in Swagger with auth requirements, permission requirements, DTOs, responses, safe invitation list metadata, and functional errors.
+- [x] 7.5 Verify controllers never accept or use body/query/header organization IDs for tenant authorization.
 
 ## 8. E2E Coverage
 

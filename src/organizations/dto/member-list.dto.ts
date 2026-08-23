@@ -1,5 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsIn } from 'class-validator';
 import { MembershipStatus } from '../../generated/prisma/client';
+
+export const MEMBERSHIP_PATCH_STATUSES = [
+  MembershipStatus.ACTIVE,
+  MembershipStatus.SUSPENDED,
+] as const;
+
+export class UpdateMembershipStatusDto {
+  @ApiProperty({ enum: MEMBERSHIP_PATCH_STATUSES })
+  @IsIn(MEMBERSHIP_PATCH_STATUSES)
+  status!: MembershipStatus;
+}
 
 export class OrganizationMemberUserDto {
   @ApiProperty()
@@ -35,4 +47,9 @@ export class OrganizationMemberDto {
 export class OrganizationMembersResponseDto {
   @ApiProperty({ type: [OrganizationMemberDto] })
   members!: OrganizationMemberDto[];
+}
+
+export class OrganizationMemberResponseDto {
+  @ApiProperty({ type: OrganizationMemberDto })
+  member!: OrganizationMemberDto;
 }

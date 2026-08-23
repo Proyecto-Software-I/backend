@@ -11,6 +11,8 @@ describe('OrganizationsController', () => {
   function makeController() {
     const membershipsService = {
       listCurrentMembers: jest.fn().mockResolvedValue({ members: [] }),
+      updateMembershipStatus: jest.fn().mockResolvedValue({ member: {} }),
+      removeMembership: jest.fn().mockResolvedValue({ member: {} }),
     } as unknown as MembershipsService;
     const invitationsService = {
       listCurrentInvitations: jest.fn().mockResolvedValue({ invitations: [] }),
@@ -55,7 +57,7 @@ describe('OrganizationsController', () => {
     ).toEqual(['members.read']);
   });
 
-  it('requires members.manage for create and revoke invitation', () => {
+  it('requires members.manage for write endpoints', () => {
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_KEY,
@@ -66,6 +68,18 @@ describe('OrganizationsController', () => {
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_KEY,
         OrganizationsController.prototype.revokeInvitation,
+      ),
+    ).toEqual(['members.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.updateMembershipStatus,
+      ),
+    ).toEqual(['members.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.removeMembership,
       ),
     ).toEqual(['members.manage']);
   });
@@ -112,6 +126,31 @@ describe('OrganizationsController', () => {
     expect(invitationsService.revokeInvitation).toHaveBeenCalledWith(
       'org-1',
       'invitation-1',
+    );
+  });
+
+  it('passes current tenant, membership id and DTO status to update membership service', async () => {
+    const { controller, membershipsService } = makeController();
+
+    await controller.updateMembershipStatus('org-1', 'membership-1', {
+      status: 'SUSPENDED',
+    });
+
+    expect(membershipsService.updateMembershipStatus).toHaveBeenCalledWith(
+      'org-1',
+      'membership-1',
+      'SUSPENDED',
+    );
+  });
+
+  it('passes current tenant and membership id to remove membership service', async () => {
+    const { controller, membershipsService } = makeController();
+
+    await controller.removeMembership('org-1', 'membership-1');
+
+    expect(membershipsService.removeMembership).toHaveBeenCalledWith(
+      'org-1',
+      'membership-1',
     );
   });
 });

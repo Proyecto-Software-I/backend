@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -27,7 +28,11 @@ import {
   OrganizationInvitationResponseDto,
   OrganizationInvitationsResponseDto,
 } from './dto/invitation-list.dto';
-import { OrganizationMembersResponseDto } from './dto/member-list.dto';
+import {
+  OrganizationMemberResponseDto,
+  OrganizationMembersResponseDto,
+  UpdateMembershipStatusDto,
+} from './dto/member-list.dto';
 import { InvitationsService } from './services/invitations.service';
 import { MembershipsService } from './services/memberships.service';
 
@@ -141,6 +146,63 @@ export class OrganizationsController {
     return this.invitationsService.revokeInvitation(
       organizationId,
       invitationId,
+    );
+  }
+
+  @Patch('members/:membershipId')
+  @RequirePermissions('members.manage')
+  @ApiOperation({
+    summary: 'Actualizar estado de miembro de la organización activa',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Membresía actualizada',
+    type: OrganizationMemberResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({ status: 404, description: 'MEMBERSHIP_NOT_FOUND' })
+  @ApiResponse({ status: 409, description: 'LAST_OWNER_REQUIRED' })
+  async updateMembershipStatus(
+    @CurrentTenant() organizationId: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: UpdateMembershipStatusDto,
+  ): Promise<OrganizationMemberResponseDto> {
+    return this.membershipsService.updateMembershipStatus(
+      organizationId,
+      membershipId,
+      dto.status,
+    );
+  }
+
+  @Delete('members/:membershipId')
+  @RequirePermissions('members.manage')
+  @ApiOperation({ summary: 'Remover miembro de la organización activa' })
+  @ApiResponse({
+    status: 200,
+    description: 'Membresía removida',
+    type: OrganizationMemberResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({ status: 404, description: 'MEMBERSHIP_NOT_FOUND' })
+  @ApiResponse({ status: 409, description: 'LAST_OWNER_REQUIRED' })
+  async removeMembership(
+    @CurrentTenant() organizationId: string,
+    @Param('membershipId') membershipId: string,
+  ): Promise<OrganizationMemberResponseDto> {
+    return this.membershipsService.removeMembership(
+      organizationId,
+      membershipId,
     );
   }
 }
