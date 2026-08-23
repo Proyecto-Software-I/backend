@@ -3,6 +3,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationProvisioningModule } from '../organization-provisioning/organization-provisioning.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { InvitationsController } from './invitations.controller';
 import { OrganizationsController } from './organizations.controller';
 import { InvitationsService } from './services/invitations.service';
 import { MembershipsService } from './services/memberships.service';
@@ -14,7 +15,7 @@ import { MembershipsService } from './services/memberships.service';
     PrismaModule,
     OrganizationProvisioningModule,
   ],
-  controllers: [OrganizationsController],
+  controllers: [OrganizationsController, InvitationsController],
   providers: [MembershipsService, InvitationsService],
 })
 export class OrganizationsModule {}

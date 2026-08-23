@@ -14,6 +14,7 @@ import type {
   OrganizationInvitationDto,
   OrganizationInvitationResponseDto,
   OrganizationInvitationsResponseDto,
+  InvitationPreviewResponseDto,
 } from '../dto/invitation-list.dto';
 
 const INVITATION_TTL_DAYS = 7;
@@ -41,6 +42,27 @@ const SAFE_INVITATION_SELECT = {
       name: true,
     },
   },
+} satisfies Prisma.OrganizationInvitationSelect;
+
+const PREVIEW_INVITATION_SELECT = {
+  id: true,
+  email: true,
+  status: true,
+  expiresAt: true,
+  organization: {
+    select: {
+      name: true,
+      slug: true,
+    },
+  },
+} satisfies Prisma.OrganizationInvitationSelect;
+
+const ACCEPT_INVITATION_SELECT = {
+  id: true,
+  email: true,
+  status: true,
+  expiresAt: true,
+  organizationId: true,
 } satisfies Prisma.OrganizationInvitationSelect;
 
 @Injectable()
@@ -95,6 +117,45 @@ export class InvitationsService {
     });
 
     return { invitations };
+  }
+
+  async previewInvitation(
+    token: string,
+  ): Promise<InvitationPreviewResponseDto> {
+    const tokenHash = this.hashToken(token);
+    const invitation = await this.prisma.organizationInvitation.findUnique({
+      where: { tokenHash },
+      select: PREVIEW_INVITATION_SELECT,
+    });
+
+    if (!invitation) {
+      throw new AuthError(
+        'INVITATION_NOT_FOUND',
+        404,
+        'Invitación no encontrada',
+      );
+    }
+
+    const currentInvitation = await this.ensurePreviewUsable(invitation);
+
+    return {
+      email: currentInvitation.email,
+      organization: currentInvitation.organization,
+      expiresAt: currentInvitation.expiresAt,
+    };
+  }
+
+  async acceptInvitation(
+    token: string,
+    authenticatedUserId: string,
+  ): Promise<OrganizationInvitationResponseDto> {
+    const tokenHash = this.hashToken(token);
+
+    const invitation = await this.serializableTransactionService.run((tx) =>
+      this.acceptInvitationInTransaction(tx, tokenHash, authenticatedUserId),
+    );
+
+    return { invitation };
   }
 
   async revokeInvitation(
@@ -229,6 +290,271 @@ export class InvitationsService {
       404,
       'Invitación no encontrada',
     );
+  }
+
+  private async ensurePreviewUsable(invitation: {
+    id: string;
+    email: string;
+    status: InvitationStatus;
+    expiresAt: Date;
+    organization: { name: string; slug: string };
+  }): Promise<{
+    email: string;
+    expiresAt: Date;
+    organization: { name: string; slug: string };
+  }> {
+    const now = new Date();
+
+    if (invitation.status === InvitationStatus.ACCEPTED) {
+      throw new AuthError(
+        'INVITATION_ALREADY_ACCEPTED',
+        409,
+        'La invitación ya fue aceptada',
+      );
+    }
+
+    if (invitation.status === InvitationStatus.REVOKED) {
+      throw new AuthError(
+        'INVITATION_REVOKED',
+        410,
+        'La invitación fue revocada',
+      );
+    }
+
+    if (
+      invitation.status === InvitationStatus.EXPIRED ||
+      invitation.expiresAt < now
+    ) {
+      if (invitation.status === InvitationStatus.PENDING) {
+        const expired = await this.prisma.organizationInvitation.updateMany({
+          where: {
+            id: invitation.id,
+            status: InvitationStatus.PENDING,
+          },
+          data: { status: InvitationStatus.EXPIRED },
+        });
+        if (expired.count !== 1) {
+          return this.resolveCurrentPreviewState(invitation.id);
+        }
+      }
+      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+    }
+
+    return {
+      email: invitation.email,
+      organization: invitation.organization,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
+  private async resolveCurrentPreviewState(invitationId: string): Promise<{
+    email: string;
+    expiresAt: Date;
+    organization: { name: string; slug: string };
+  }> {
+    const invitation = await this.prisma.organizationInvitation.findUnique({
+      where: { id: invitationId },
+      select: PREVIEW_INVITATION_SELECT,
+    });
+
+    if (!invitation) {
+      throw new AuthError(
+        'INVITATION_NOT_FOUND',
+        404,
+        'Invitación no encontrada',
+      );
+    }
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      this.throwInvitationState(invitation.status, invitation.expiresAt);
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+    }
+
+    return {
+      email: invitation.email,
+      organization: invitation.organization,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
+  private async acceptInvitationInTransaction(
+    tx: Prisma.TransactionClient,
+    tokenHash: string,
+    authenticatedUserId: string,
+  ): Promise<OrganizationInvitationDto> {
+    const now = new Date();
+    const invitation = await tx.organizationInvitation.findUnique({
+      where: { tokenHash },
+      select: ACCEPT_INVITATION_SELECT,
+    });
+
+    if (!invitation) {
+      throw new AuthError(
+        'INVITATION_NOT_FOUND',
+        404,
+        'Invitación no encontrada',
+      );
+    }
+
+    await this.ensureAcceptableInTransaction(tx, invitation, now);
+
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: authenticatedUserId },
+      select: { id: true, email: true },
+    });
+
+    if (
+      this.normalizeEmail(user.email) !== this.normalizeEmail(invitation.email)
+    ) {
+      throw new AuthError(
+        'INVITATION_EMAIL_MISMATCH',
+        403,
+        'El email autenticado no coincide con la invitación',
+      );
+    }
+
+    const existingMembership = await tx.organizationMembership.findFirst({
+      where: {
+        organizationId: invitation.organizationId,
+        userId: user.id,
+      },
+      select: { id: true, status: true },
+    });
+
+    if (existingMembership) {
+      throw new AuthError(
+        'MEMBER_ALREADY_EXISTS',
+        409,
+        'El usuario ya pertenece a la organización',
+      );
+    }
+
+    const memberRole = await this.organizationRolesService.ensureMemberRole(
+      tx,
+      invitation.organizationId,
+    );
+    const accepted = await tx.organizationInvitation.updateMany({
+      where: {
+        id: invitation.id,
+        status: InvitationStatus.PENDING,
+      },
+      data: {
+        status: InvitationStatus.ACCEPTED,
+        acceptedAt: now,
+      },
+    });
+
+    if (accepted.count !== 1) {
+      await this.throwCurrentAcceptState(tx, invitation.id);
+    }
+
+    const membership = await tx.organizationMembership.create({
+      data: {
+        organizationId: invitation.organizationId,
+        userId: user.id,
+        status: MembershipStatus.ACTIVE,
+        joinedAt: now,
+      },
+      select: { id: true },
+    });
+    await this.organizationRolesService.assignRoleToMembership(
+      tx,
+      membership.id,
+      memberRole.id,
+    );
+
+    return tx.organizationInvitation.findUniqueOrThrow({
+      where: { id: invitation.id },
+      select: SAFE_INVITATION_SELECT,
+    });
+  }
+
+  private async ensureAcceptableInTransaction(
+    tx: Prisma.TransactionClient,
+    invitation: {
+      id: string;
+      status: InvitationStatus;
+      expiresAt: Date;
+    },
+    now: Date,
+  ): Promise<void> {
+    if (
+      invitation.status === InvitationStatus.EXPIRED ||
+      invitation.expiresAt < now
+    ) {
+      if (invitation.status === InvitationStatus.PENDING) {
+        const expired = await tx.organizationInvitation.updateMany({
+          where: { id: invitation.id, status: InvitationStatus.PENDING },
+          data: { status: InvitationStatus.EXPIRED },
+        });
+        if (expired.count !== 1) {
+          await this.throwCurrentAcceptState(tx, invitation.id);
+        }
+      }
+      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+    }
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      this.throwInvitationState(invitation.status, invitation.expiresAt);
+    }
+  }
+
+  private async throwCurrentAcceptState(
+    tx: Prisma.TransactionClient,
+    invitationId: string,
+  ): Promise<never> {
+    const invitation = await tx.organizationInvitation.findUnique({
+      where: { id: invitationId },
+      select: { status: true, expiresAt: true },
+    });
+
+    if (!invitation) {
+      throw new AuthError(
+        'INVITATION_NOT_FOUND',
+        404,
+        'Invitación no encontrada',
+      );
+    }
+
+    this.throwInvitationState(invitation.status, invitation.expiresAt);
+    throw new AuthError(
+      'INVITATION_NOT_FOUND',
+      404,
+      'Invitación no encontrada',
+    );
+  }
+
+  private throwInvitationState(
+    status: InvitationStatus,
+    expiresAt: Date,
+  ): void {
+    if (status === InvitationStatus.PENDING) {
+      if (expiresAt < new Date()) {
+        throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      }
+      return;
+    }
+
+    if (status === InvitationStatus.ACCEPTED) {
+      throw new AuthError(
+        'INVITATION_ALREADY_ACCEPTED',
+        409,
+        'La invitación ya fue aceptada',
+      );
+    }
+
+    if (status === InvitationStatus.REVOKED) {
+      throw new AuthError(
+        'INVITATION_REVOKED',
+        410,
+        'La invitación fue revocada',
+      );
+    }
+
+    throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
   }
 
   private async createInvitationInTransaction(

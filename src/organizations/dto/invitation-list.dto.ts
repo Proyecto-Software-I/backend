@@ -62,3 +62,22 @@ export class CreateOrganizationInvitationResponseDto extends OrganizationInvitat
   @ApiProperty({ example: '/invite/<token>' })
   acceptanceUrl!: string;
 }
+
+export class InvitationPreviewOrganizationDto {
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty()
+  slug!: string;
+}
+
+export class InvitationPreviewResponseDto {
+  @ApiProperty()
+  email!: string;
+
+  @ApiProperty({ type: InvitationPreviewOrganizationDto })
+  organization!: InvitationPreviewOrganizationDto;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  expiresAt!: Date;
+}
