@@ -19,6 +19,7 @@ import {
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthError } from '../common/exceptions/auth-error';
+import { AuthResponseDto } from './dto/auth-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { SelectOrganizationDto } from './dto/select-organization.dto';
@@ -85,7 +86,11 @@ export class AuthController {
       ],
     },
   })
-  @ApiResponse({ status: 201, description: 'Usuario registrado' })
+  @ApiResponse({
+    status: 201,
+    description: 'Usuario registrado',
+    type: AuthResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description: 'Payload inválido o mezcla de modos de registro',
@@ -114,7 +119,11 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Iniciar sesión y resolver tenant activo' })
-  @ApiResponse({ status: 200, description: 'Sesión iniciada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Sesión iniciada',
+    type: AuthResponseDto,
+  })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   async login(
     @Body() dto: LoginDto,
@@ -129,7 +138,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Obtener sesión actual' })
-  @ApiResponse({ status: 200, description: 'Sesión actual' })
+  @ApiResponse({
+    status: 200,
+    description: 'Sesión actual',
+    type: AuthResponseDto,
+  })
   @ApiResponse({ status: 401, description: 'Sesión inválida' })
   async me(@CurrentUser() user: AuthContext) {
     return this.authService.me(user.userId, user.organizationId);
@@ -140,7 +153,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Seleccionar organización activa' })
-  @ApiResponse({ status: 200, description: 'Organización seleccionada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Organización seleccionada',
+    type: AuthResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Acceso denegado' })
   async selectOrganization(
     @Body() dto: SelectOrganizationDto,

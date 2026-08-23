@@ -6,6 +6,7 @@ import {
   MembershipStatus,
   OrganizationStatus,
   Prisma,
+  RoleScope,
   UserStatus,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +29,14 @@ export interface MembershipView {
   status: string;
   organization: OrganizationView;
   roles: string[];
+  permissions: string[];
+}
+
+export interface ActiveMembershipView {
+  id: string;
+  status: string;
+  roles: string[];
+  permissions: string[];
 }
 
 export interface AuthUserView {
@@ -48,7 +57,7 @@ export interface AuthResponse {
   user: AuthUserView;
   auth: AuthTokens;
   activeOrganization: OrganizationView | null;
-  activeMembership: { id: string; status: string; roles: string[] } | null;
+  activeMembership: ActiveMembershipView | null;
   memberships: MembershipView[];
   requiresOrganizationSelection: boolean;
 }
@@ -61,7 +70,7 @@ export interface SessionResult {
 export interface MeResponse {
   user: AuthUserView;
   activeOrganization: OrganizationView | null;
-  activeMembership: { id: string; status: string; roles: string[] } | null;
+  activeMembership: ActiveMembershipView | null;
   memberships: MembershipView[];
   requiresOrganizationSelection: boolean;
 }
@@ -473,9 +482,7 @@ export class AuthService {
     return {
       user: await this.getUserView(userId),
       activeOrganization: active ? active.organization : null,
-      activeMembership: active
-        ? { id: active.id, status: active.status, roles: active.roles }
-        : null,
+      activeMembership: active ? this.toActiveMembershipView(active) : null,
       memberships,
       requiresOrganizationSelection: organizationId == null,
     };
@@ -677,22 +684,62 @@ export class AuthService {
   private async getMembershipViews(userId: string): Promise<MembershipView[]> {
     const memberships = await this.prisma.organizationMembership.findMany({
       where: { userId, status: MembershipStatus.ACTIVE },
-      include: {
-        organization: true,
-        roles: { include: { role: true } },
+      select: {
+        id: true,
+        status: true,
+        organizationId: true,
+        organization: {
+          select: { id: true, name: true, slug: true },
+        },
+        roles: {
+          select: {
+            role: {
+              select: {
+                organizationId: true,
+                scope: true,
+                key: true,
+                permissions: {
+                  select: {
+                    permission: { select: { key: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    return memberships.map((m) => ({
-      id: m.id,
-      status: m.status,
-      organization: {
-        id: m.organization.id,
-        name: m.organization.name,
-        slug: m.organization.slug,
-      },
-      roles: m.roles.map((r) => r.role.key),
-    }));
+    return memberships.map((membership) => {
+      const roles = new Set<string>();
+      const permissions = new Set<string>();
+
+      for (const membershipRole of membership.roles) {
+        const role = membershipRole.role;
+        if (
+          role.organizationId !== membership.organizationId ||
+          role.scope !== RoleScope.ORGANIZATION
+        ) {
+          continue;
+        }
+        roles.add(role.key);
+        for (const rolePermission of role.permissions) {
+          permissions.add(rolePermission.permission.key);
+        }
+      }
+
+      return {
+        id: membership.id,
+        status: membership.status,
+        organization: {
+          id: membership.organization.id,
+          name: membership.organization.name,
+          slug: membership.organization.slug,
+        },
+        roles: [...roles].sort(),
+        permissions: [...permissions].sort(),
+      };
+    });
   }
 
   private buildAuthResponse(
@@ -717,11 +764,20 @@ export class AuthService {
         expiresIn: this.tokenService.expiresIn,
       },
       activeOrganization: active ? active.organization : null,
-      activeMembership: active
-        ? { id: active.id, status: active.status, roles: active.roles }
-        : null,
+      activeMembership: active ? this.toActiveMembershipView(active) : null,
       memberships,
       requiresOrganizationSelection: requiresSelection,
+    };
+  }
+
+  private toActiveMembershipView(
+    membership: MembershipView,
+  ): ActiveMembershipView {
+    return {
+      id: membership.id,
+      status: membership.status,
+      roles: membership.roles,
+      permissions: membership.permissions,
     };
   }
 

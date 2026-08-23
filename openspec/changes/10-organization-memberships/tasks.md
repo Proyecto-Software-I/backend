@@ -24,13 +24,13 @@
 
 ## 4. Auth Contract Updates
 
-- [ ] 4.1 Extend Auth membership view construction to include deduplicated permission keys from `MembershipRole -> Role -> RolePermission -> Permission`.
-- [ ] 4.2 Centralize membership view construction so register, login, select-organization, and `/auth/me` use the same permissions-aware response shape.
+- [x] 4.1 Extend Auth membership view construction to include deduplicated permission keys from `MembershipRole -> Role -> RolePermission -> Permission`.
+- [x] 4.2 Centralize membership view construction so register, login, select-organization, and `/auth/me` use the same permissions-aware response shape.
 - [x] 4.3 Extend `RegisterDto` validation to support mutually exclusive normal and invitation modes while preserving the existing normal registration payload.
 - [x] 4.4 Extend `AuthService.register` normal mode to use shared role provisioning and preserve current behavior.
 - [x] 4.5 Add invitation registration path to `AuthService.register` using a Serializable transaction, bounded P2034 retry, and shared provisioning methods that receive the same transaction client.
-- [ ] 4.6 Update Auth Swagger documentation for normal register, invitation register, functional errors, and `activeMembership.permissions`.
-- [ ] 4.7 Update Auth unit tests for normal register compatibility, invitation register success, mode exclusivity validation, duplicate email, unusable invitation tokens, transaction-client propagation, atomic failure without partial records, and permissions in Auth responses.
+- [x] 4.6 Update Auth Swagger documentation for normal register, invitation register, functional errors, and `activeMembership.permissions`.
+- [x] 4.7 Update Auth unit tests for normal register compatibility, invitation register success, mode exclusivity validation, duplicate email, unusable invitation tokens, transaction-client propagation, atomic failure without partial records, and permissions in Auth responses.
 
 ## 5. Invitation Services And DTOs
 

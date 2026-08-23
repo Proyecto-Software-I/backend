@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { InvitationStatus } from '../generated/prisma/client';
+import { InvitationStatus, RoleScope } from '../generated/prisma/client';
 import { OrganizationRolesService } from '../organization-provisioning/services/organization-roles.service';
 import { AuthService } from './auth.service';
 
@@ -16,6 +16,23 @@ function invitation(overrides: Record<string, unknown> = {}) {
     expiresAt: futureDate(),
     organizationId: 'org-invited',
     ...overrides,
+  };
+}
+
+function membershipRole(
+  key: string,
+  permissionKeys: string[],
+  organizationId = 'o1',
+) {
+  return {
+    role: {
+      organizationId,
+      scope: RoleScope.ORGANIZATION,
+      key,
+      permissions: permissionKeys.map((permissionKey) => ({
+        permission: { key: permissionKey },
+      })),
+    },
   };
 }
 
@@ -51,7 +68,14 @@ function makeServices() {
     id: 'm1',
     status: 'ACTIVE',
     organization: { id: 'o1', name: 'Acme', slug: 'acme' },
-    roles: [{ role: { key: 'OWNER' } }],
+    organizationId: 'o1',
+    roles: [
+      membershipRole('OWNER', [
+        'members.manage',
+        'members.read',
+        'organization.read',
+      ]),
+    ],
   };
 
   const tx: any = {
@@ -171,8 +195,38 @@ describe('AuthService', () => {
     expect(tx.userSession.create).toHaveBeenCalled();
     expect(result.response.requiresOrganizationSelection).toBe(false);
     expect(result.response.activeOrganization).not.toBeNull();
-    expect(result.response.activeMembership?.roles).toContain('OWNER');
+    expect(result.response.activeMembership).toEqual({
+      id: 'm1',
+      status: 'ACTIVE',
+      roles: ['OWNER'],
+      permissions: ['members.manage', 'members.read', 'organization.read'],
+    });
+    expect(result.response.activeMembership).not.toHaveProperty('organization');
+    expect(result.response.memberships[0].organization).toEqual({
+      id: 'o1',
+      name: 'Acme',
+      slug: 'acme',
+    });
     expect(result.response.auth.accessToken).toBeTruthy();
+    expect(prisma.organizationMembership.findMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', status: 'ACTIVE' },
+      select: expect.objectContaining({
+        roles: {
+          select: {
+            role: {
+              select: expect.objectContaining({
+                key: true,
+                permissions: {
+                  select: {
+                    permission: { select: { key: true } },
+                  },
+                },
+              }),
+            },
+          },
+        },
+      }),
+    });
   });
 
   it('registro con email duplicado rechaza con EMAIL_ALREADY_REGISTERED', async () => {
@@ -194,6 +248,14 @@ describe('AuthService', () => {
     const { service, prisma, tx, membership, serializableTransactionService } =
       makeServices();
     membership.roles = [{ role: { key: 'MEMBER' } }];
+    membership.organizationId = 'org-invited';
+    membership.roles = [
+      membershipRole(
+        'MEMBER',
+        ['organization.read', 'members.read'],
+        'org-invited',
+      ),
+    ];
     membership.organization = {
       id: 'org-invited',
       name: 'Invited Org',
@@ -276,7 +338,16 @@ describe('AuthService', () => {
       }),
     });
     expect(result.response.activeOrganization?.id).toBe('org-invited');
-    expect(result.response.activeMembership?.roles).toEqual(['MEMBER']);
+    expect(result.response.activeMembership).toEqual({
+      id: 'm1',
+      status: 'ACTIVE',
+      roles: ['MEMBER'],
+      permissions: ['members.read', 'organization.read'],
+    });
+    expect(result.response.activeMembership).not.toHaveProperty('organization');
+    expect(result.response.activeMembership?.permissions).not.toContain(
+      'members.manage',
+    );
     expect(result.response.auth.accessToken).toContain('org-invited');
     expect(
       JSON.stringify([
@@ -474,7 +545,7 @@ describe('AuthService', () => {
   });
 
   it('login con 1 tenant establece org y requiresOrganizationSelection false', async () => {
-    const { service, prisma, membership } = makeServices();
+    const { service, prisma, membership, tokenService } = makeServices();
     prisma.user.findUnique.mockResolvedValue({
       id: 'u1',
       email: 'a@b.com',
@@ -487,7 +558,45 @@ describe('AuthService', () => {
 
     expect(result.response.requiresOrganizationSelection).toBe(false);
     expect(result.response.activeOrganization).not.toBeNull();
+    expect(result.response.activeMembership).not.toHaveProperty('organization');
+    expect(result.response.activeMembership?.permissions).toEqual([
+      'members.manage',
+      'members.read',
+      'organization.read',
+    ]);
     expect(result.response.auth.accessToken).toBeTruthy();
+    expect(tokenService.sign).toHaveBeenCalledWith({
+      sub: 'u1',
+      sid: expect.any(String),
+      org: 'o1',
+    });
+  });
+
+  it('deduplicates permission keys from multiple roles without hardcoding role names', async () => {
+    const { service, prisma, membership } = makeServices();
+    membership.roles = [
+      membershipRole('CUSTOM_A', ['members.read', 'custom.permission']),
+      membershipRole('CUSTOM_B', ['members.read', 'organization.read']),
+    ];
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'u1',
+      email: 'a@b.com',
+      status: 'ACTIVE',
+      credential: { passwordHash: 'h' },
+    });
+    prisma.organizationMembership.findMany.mockResolvedValue([membership]);
+
+    const result = await service.login({ email: 'a@b.com', password: 'pw' });
+
+    expect(result.response.activeMembership?.roles).toEqual([
+      'CUSTOM_A',
+      'CUSTOM_B',
+    ]);
+    expect(result.response.activeMembership?.permissions).toEqual([
+      'custom.permission',
+      'members.read',
+      'organization.read',
+    ]);
   });
 
   it('regla dedicada: 1 org activa NUNCA devuelve requiresOrganizationSelection true', async () => {
@@ -527,6 +636,7 @@ describe('AuthService', () => {
 
     expect(result.response.requiresOrganizationSelection).toBe(true);
     expect(result.response.activeOrganization).toBeNull();
+    expect(result.response.activeMembership).toBeNull();
   });
 
   it('login sin membresías activas rechaza con NO_ACTIVE_MEMBERSHIP', async () => {
@@ -613,6 +723,44 @@ describe('AuthService', () => {
     expect(prisma.organizationMembership.findFirst).toHaveBeenCalled();
     expect(result.response.requiresOrganizationSelection).toBe(false);
     expect(result.response.activeOrganization?.id).toBe('o1');
+    expect(result.response.activeMembership).not.toHaveProperty('organization');
+    expect(result.response.activeMembership?.permissions).toEqual([
+      'members.manage',
+      'members.read',
+      'organization.read',
+    ]);
+  });
+
+  it('select-organization uses only permissions from the selected tenant membership', async () => {
+    const { service, prisma, membership } = makeServices();
+    const other = {
+      ...membership,
+      id: 'm2',
+      organizationId: 'o2',
+      organization: { id: 'o2', name: 'Banco', slug: 'banco' },
+      roles: [membershipRole('OWNER', ['other.only'], 'o2')],
+    };
+    prisma.organizationMembership.findFirst.mockResolvedValue(membership);
+    prisma.organizationMembership.findMany.mockResolvedValue([
+      membership,
+      other,
+    ]);
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'u1',
+      email: 'a@b.com',
+      firstName: 'O',
+      lastName: 'M',
+      displayName: 'O M',
+    });
+
+    const result = await service.selectOrganization('u1', 's1', 'o1');
+
+    expect(result.response.activeMembership?.permissions).not.toContain(
+      'other.only',
+    );
+    expect(result.response.activeOrganization?.id).toBe('o1');
+    expect(result.response.activeMembership).not.toHaveProperty('organization');
+    expect(result.response.memberships[0].organization.id).toBe('o1');
   });
 
   it('selección de tenant ajeno rechaza con ORGANIZATION_ACCESS_DENIED', async () => {
@@ -638,7 +786,31 @@ describe('AuthService', () => {
     const result = await service.me('u1', 'o1');
 
     expect(result.activeOrganization?.id).toBe('o1');
+    expect(result.activeMembership).not.toHaveProperty('organization');
+    expect(result.activeMembership?.permissions).toEqual([
+      'members.manage',
+      'members.read',
+      'organization.read',
+    ]);
     expect(result.requiresOrganizationSelection).toBe(false);
+  });
+
+  it('GET /auth/me without active tenant keeps activeMembership null', async () => {
+    const { service, prisma, membership } = makeServices();
+    prisma.organizationMembership.findMany.mockResolvedValue([membership]);
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'u1',
+      email: 'a@b.com',
+      firstName: 'O',
+      lastName: 'M',
+      displayName: 'O M',
+    });
+
+    const result = await service.me('u1', null);
+
+    expect(result.activeOrganization).toBeNull();
+    expect(result.activeMembership).toBeNull();
+    expect(result.requiresOrganizationSelection).toBe(true);
   });
 
   it('refresh con sesión inexistente rechaza con SESSION_REVOKED', async () => {
