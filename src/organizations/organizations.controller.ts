@@ -1,15 +1,32 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentTenant } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentTenant,
+  CurrentUser,
+  type AuthContext,
+} from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequirePermissions } from '../access-control/decorators/require-permissions.decorator';
 import { PermissionGuard } from '../access-control/guards/permission.guard';
-import { OrganizationInvitationsResponseDto } from './dto/invitation-list.dto';
+import {
+  CreateOrganizationInvitationDto,
+  CreateOrganizationInvitationResponseDto,
+  OrganizationInvitationResponseDto,
+  OrganizationInvitationsResponseDto,
+} from './dto/invitation-list.dto';
 import { OrganizationMembersResponseDto } from './dto/member-list.dto';
 import { InvitationsService } from './services/invitations.service';
 import { MembershipsService } from './services/memberships.service';
@@ -62,5 +79,68 @@ export class OrganizationsController {
     @CurrentTenant() organizationId: string,
   ): Promise<OrganizationInvitationsResponseDto> {
     return this.invitationsService.listCurrentInvitations(organizationId);
+  }
+
+  @Post('invitations')
+  @RequirePermissions('members.manage')
+  @ApiOperation({ summary: 'Crear invitación para la organización activa' })
+  @ApiResponse({
+    status: 201,
+    description: 'Invitación creada',
+    type: CreateOrganizationInvitationResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Conflicto. Códigos posibles: MEMBER_ALREADY_EXISTS, INVITATION_ALREADY_PENDING. Formato: { statusCode, code, message }',
+  })
+  async createInvitation(
+    @Body() dto: CreateOrganizationInvitationDto,
+    @CurrentTenant() organizationId: string,
+    @CurrentUser() user: AuthContext,
+  ): Promise<CreateOrganizationInvitationResponseDto> {
+    return this.invitationsService.createInvitation({
+      organizationId,
+      invitedByUserId: user.userId,
+      email: dto.email,
+    });
+  }
+
+  @Delete('invitations/:invitationId')
+  @RequirePermissions('members.manage')
+  @ApiOperation({ summary: 'Revocar invitación de la organización activa' })
+  @ApiResponse({
+    status: 200,
+    description: 'Invitación revocada',
+    type: OrganizationInvitationResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({ status: 404, description: 'INVITATION_NOT_FOUND' })
+  @ApiResponse({ status: 409, description: 'INVITATION_ALREADY_ACCEPTED' })
+  @ApiResponse({
+    status: 410,
+    description:
+      'Invitación no usable. Códigos posibles: INVITATION_EXPIRED, INVITATION_REVOKED. Formato: { statusCode, code, message }',
+  })
+  async revokeInvitation(
+    @CurrentTenant() organizationId: string,
+    @Param('invitationId') invitationId: string,
+  ): Promise<OrganizationInvitationResponseDto> {
+    return this.invitationsService.revokeInvitation(
+      organizationId,
+      invitationId,
+    );
   }
 }

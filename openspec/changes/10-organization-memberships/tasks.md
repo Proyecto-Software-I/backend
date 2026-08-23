@@ -35,11 +35,11 @@
 ## 5. Invitation Services And DTOs
 
 - [ ] 5.1 Create DTOs for invitation creation and invitation-related responses with class-validator and Swagger metadata.
-- [ ] 5.2 Implement invitation token generation and SHA-256 hashing using Node crypto or a neutral helper, storing only `tokenHash`.
+- [x] 5.2 Implement invitation token generation and SHA-256 hashing using Node crypto or a neutral helper, storing only `tokenHash`.
 - [ ] 5.3 Implement invitation expiration handling that treats stale `PENDING` records as `EXPIRED` and persists expiration opportunistically.
-- [ ] 5.4 Implement `InvitationsService.createInvitation` with a Serializable transaction, bounded P2034 retry, tenant-scoped checks for normalized email, ACTIVE/SUSPENDED/REMOVED membership conflict, duplicate pending invitation, same-tx MEMBER provisioning, 7-day expiry, `invitedByUserId`, `proposedRoleId`, and one-time `acceptanceUrl` return.
+- [x] 5.4 Implement `InvitationsService.createInvitation` with a Serializable transaction, bounded P2034 retry, tenant-scoped checks for normalized email, ACTIVE/SUSPENDED/REMOVED membership conflict, duplicate pending invitation, same-tx MEMBER provisioning, 7-day expiry, `invitedByUserId`, `proposedRoleId`, and one-time `acceptanceUrl` return.
 - [x] 5.5 Implement `InvitationsService.listInvitations` for current-tenant listing with safe `invitedBy` and `proposedRole` relation fields and without plaintext tokens, token hashes, or internal relation IDs.
-- [ ] 5.6 Implement `InvitationsService.revokeInvitation` using `invitationId + active organizationId` and state-specific contracts for PENDING, ACCEPTED, EXPIRED, REVOKED, missing, and cross-tenant invitations.
+- [x] 5.6 Implement `InvitationsService.revokeInvitation` using `invitationId + active organizationId` and state-specific contracts for PENDING, ACCEPTED, EXPIRED, REVOKED, missing, and cross-tenant invitations.
 - [ ] 5.7 Implement public invitation preview by token hash with safe response fields and functional errors for missing, expired, revoked, and accepted invitations.
 - [ ] 5.8 Implement existing-user invitation acceptance with Serializable transaction, bounded P2034 retry, authenticated email match, atomic `PENDING -> ACCEPTED`, same-tx ACTIVE membership creation, same-tx MEMBER assignment, and no automatic organization selection.
 - [ ] 5.9 Add unit tests for invitation create, duplicate pending, expired replacement, revoked, accepted, invalid token, token hashing, email mismatch, replay, existing ACTIVE/SUSPENDED/REMOVED membership rejection, no invitation created for membership conflicts, invitedBy/proposedRole persistence, revocation by state, and cross-tenant invitation not found.

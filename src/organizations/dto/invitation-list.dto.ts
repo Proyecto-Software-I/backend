@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty } from 'class-validator';
 import { InvitationStatus } from '../../generated/prisma/client';
+
+export class CreateOrganizationInvitationDto {
+  @ApiProperty({ example: 'new.member@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email!: string;
+}
 
 export class InvitationInvitedByDto {
   @ApiProperty()
@@ -43,4 +51,14 @@ export class OrganizationInvitationDto {
 export class OrganizationInvitationsResponseDto {
   @ApiProperty({ type: [OrganizationInvitationDto] })
   invitations!: OrganizationInvitationDto[];
+}
+
+export class OrganizationInvitationResponseDto {
+  @ApiProperty({ type: OrganizationInvitationDto })
+  invitation!: OrganizationInvitationDto;
+}
+
+export class CreateOrganizationInvitationResponseDto extends OrganizationInvitationResponseDto {
+  @ApiProperty({ example: '/invite/<token>' })
+  acceptanceUrl!: string;
 }

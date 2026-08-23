@@ -14,6 +14,11 @@ describe('OrganizationsController', () => {
     } as unknown as MembershipsService;
     const invitationsService = {
       listCurrentInvitations: jest.fn().mockResolvedValue({ invitations: [] }),
+      createInvitation: jest.fn().mockResolvedValue({
+        invitation: {},
+        acceptanceUrl: '/invite/token',
+      }),
+      revokeInvitation: jest.fn().mockResolvedValue({ invitation: {} }),
     } as unknown as InvitationsService;
 
     return {
@@ -50,6 +55,21 @@ describe('OrganizationsController', () => {
     ).toEqual(['members.read']);
   });
 
+  it('requires members.manage for create and revoke invitation', () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.createInvitation,
+      ),
+    ).toEqual(['members.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.revokeInvitation,
+      ),
+    ).toEqual(['members.manage']);
+  });
+
   it('passes the current tenant to members service', async () => {
     const { controller, membershipsService } = makeController();
 
@@ -65,6 +85,33 @@ describe('OrganizationsController', () => {
 
     expect(invitationsService.listCurrentInvitations).toHaveBeenCalledWith(
       'org-1',
+    );
+  });
+
+  it('passes current tenant and authenticated user to create invitation service', async () => {
+    const { controller, invitationsService } = makeController();
+
+    await controller.createInvitation(
+      { email: 'member@example.com' },
+      'org-1',
+      { userId: 'user-1', sessionId: 'session-1', organizationId: 'org-1' },
+    );
+
+    expect(invitationsService.createInvitation).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      invitedByUserId: 'user-1',
+      email: 'member@example.com',
+    });
+  });
+
+  it('passes current tenant and invitation id to revoke invitation service', async () => {
+    const { controller, invitationsService } = makeController();
+
+    await controller.revokeInvitation('org-1', 'invitation-1');
+
+    expect(invitationsService.revokeInvitation).toHaveBeenCalledWith(
+      'org-1',
+      'invitation-1',
     );
   });
 });
