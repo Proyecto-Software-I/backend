@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
+import { OrganizationProvisioningModule } from '../organization-provisioning/organization-provisioning.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PasswordService } from './services/password.service';
@@ -9,7 +10,7 @@ import { SessionService } from './services/session.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
-  imports: [ConfigModule, PrismaModule],
+  imports: [ConfigModule, PrismaModule, OrganizationProvisioningModule],
   controllers: [AuthController],
   providers: [
     AuthService,

@@ -4,11 +4,11 @@ import { randomUUID } from 'crypto';
 import {
   MembershipStatus,
   OrganizationStatus,
-  RoleScope,
   UserStatus,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthError } from '../common/exceptions/auth-error';
+import { OrganizationRolesService } from '../organization-provisioning/services/organization-roles.service';
 import { PasswordService } from './services/password.service';
 import { TokenService } from './services/token.service';
 import { SessionService } from './services/session.service';
@@ -71,6 +71,7 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
     private readonly sessionService: SessionService,
+    private readonly organizationRolesService: OrganizationRolesService,
     configService: ConfigService,
   ) {
     this.refreshTtlDays =
@@ -132,48 +133,16 @@ export class AuthService {
         },
       });
 
-      const role = await tx.role.upsert({
-        where: {
-          organizationId_scope_key: {
-            organizationId: organization.id,
-            scope: RoleScope.ORGANIZATION,
-            key: 'OWNER',
-          },
-        },
-        update: {},
-        create: {
-          organizationId: organization.id,
-          scope: RoleScope.ORGANIZATION,
-          key: 'OWNER',
-          name: 'Owner',
-          isSystem: true,
-        },
-      });
-
-      const permissions = await tx.permission.findMany();
-      for (const permission of permissions) {
-        await tx.rolePermission.upsert({
-          where: {
-            roleId_permissionId: {
-              roleId: role.id,
-              permissionId: permission.id,
-            },
-          },
-          update: {},
-          create: { roleId: role.id, permissionId: permission.id },
-        });
-      }
-
-      await tx.membershipRole.upsert({
-        where: {
-          membershipId_roleId: {
-            membershipId: membership.id,
-            roleId: role.id,
-          },
-        },
-        update: {},
-        create: { membershipId: membership.id, roleId: role.id },
-      });
+      const ownerRole = await this.organizationRolesService.ensureOwnerRole(
+        tx,
+        organization.id,
+      );
+      await this.organizationRolesService.ensureMemberRole(tx, organization.id);
+      await this.organizationRolesService.assignRoleToMembership(
+        tx,
+        membership.id,
+        ownerRole.id,
+      );
 
       const accessToken = this.tokenService.sign({
         sub: user.id,

@@ -1,33 +1,33 @@
 ## 1. Module Structure And Shared Authorization
 
-- [ ] 1.1 Create the reusable access-control module area with `RequirePermissions` decorator and `PermissionGuard`.
-- [ ] 1.2 Implement `PermissionGuard` to require `JwtAuthGuard` context, reject null tenant with `TENANT_REQUIRED`, load active membership permissions from Prisma, and reject missing permissions with `MEMBER_ACCESS_DENIED`.
-- [ ] 1.3 Add request-local permission/membership reuse in `PermissionGuard` without adding global permission cache or JWT permission claims.
-- [ ] 1.4 Add unit tests for `PermissionGuard`: OWNER with `members.manage`, MEMBER without `members.manage`, null tenant, missing active membership, and current DB permissions.
+- [x] 1.1 Create the reusable access-control module area with `RequirePermissions` decorator and `PermissionGuard`.
+- [x] 1.2 Implement `PermissionGuard` to require `JwtAuthGuard` context, reject null tenant with `TENANT_REQUIRED`, load active membership permissions from Prisma, and reject missing permissions with `MEMBER_ACCESS_DENIED`.
+- [x] 1.3 Add request-local permission/membership reuse in `PermissionGuard` without adding global permission cache or JWT permission claims.
+- [x] 1.4 Add unit tests for `PermissionGuard`: OWNER with `members.manage`, MEMBER without `members.manage`, null tenant, missing active membership, and current DB permissions.
 - [ ] 1.5 Create `OrganizationsModule` and wire it into `AppModule` without introducing `AuthModule <-> OrganizationsModule` circular imports.
-- [ ] 1.6 Create `OrganizationProvisioningModule` or equivalent neutral module imported by Auth and Organizations, depending only on `PrismaModule` and not importing Auth or Organizations.
+- [x] 1.6 Create `OrganizationProvisioningModule` or equivalent neutral module imported by Auth and Organizations, depending only on `PrismaModule` and not importing Auth or Organizations.
 
 ## 2. Organization Role Provisioning
 
-- [ ] 2.1 Implement `OrganizationRolesService` or an equivalent lower-level provisioning service whose atomic-operation methods accept an explicit Prisma transaction client.
-- [ ] 2.2 Move or reuse OWNER role provisioning so normal registration still grants OWNER all seeded permissions.
-- [ ] 2.3 Implement idempotent MEMBER role provisioning with `organization.read` and `members.read`, excluding `members.manage`.
-- [ ] 2.4 Ensure normal registration creates or ensures both OWNER and MEMBER for new organizations while preserving the creator's OWNER membership behavior.
-- [ ] 2.5 Add unit tests for OWNER provisioning, MEMBER provisioning, idempotency, MEMBER permission contents, and verification that transaction-aware provisioning uses the provided transaction client instead of root PrismaService.
+- [x] 2.1 Implement `OrganizationRolesService` or an equivalent lower-level provisioning service whose atomic-operation methods accept an explicit Prisma transaction client.
+- [x] 2.2 Move or reuse OWNER role provisioning so normal registration still grants OWNER all seeded permissions.
+- [x] 2.3 Implement idempotent MEMBER role provisioning with `organization.read` and `members.read`, excluding `members.manage`.
+- [x] 2.4 Ensure normal registration creates or ensures both OWNER and MEMBER for new organizations while preserving the creator's OWNER membership behavior.
+- [x] 2.5 Add unit tests for OWNER provisioning, MEMBER provisioning, idempotency, MEMBER permission contents, and verification that transaction-aware provisioning uses the provided transaction client instead of root PrismaService.
 
 ## 3. Serializable Transaction Support
 
-- [ ] 3.1 Implement a bounded Serializable transaction retry helper for Prisma `P2034` conflicts with 3 total attempts and no retries for functional errors.
-- [ ] 3.2 Ensure each retry creates a new Serializable transaction and never reuses a rolled-back transaction client.
+- [x] 3.1 Implement a bounded Serializable transaction retry helper for Prisma `P2034` conflicts with 3 total attempts and no retries for functional errors.
+- [x] 3.2 Ensure each retry creates a new Serializable transaction and never reuses a rolled-back transaction client.
 - [ ] 3.3 Use Serializable transactions for invitation creation, invitation acceptance, register-with-invitation, and last-owner membership mutations.
-- [ ] 3.4 Add unit tests for P2034 retry, retry limit, non-P2034 propagation, and functional-error non-retry behavior.
+- [x] 3.4 Add unit tests for P2034 retry, retry limit, non-P2034 propagation, and functional-error non-retry behavior.
 
 ## 4. Auth Contract Updates
 
 - [ ] 4.1 Extend Auth membership view construction to include deduplicated permission keys from `MembershipRole -> Role -> RolePermission -> Permission`.
 - [ ] 4.2 Centralize membership view construction so register, login, select-organization, and `/auth/me` use the same permissions-aware response shape.
 - [ ] 4.3 Extend `RegisterDto` validation to support mutually exclusive normal and invitation modes while preserving the existing normal registration payload.
-- [ ] 4.4 Extend `AuthService.register` normal mode to use shared role provisioning and preserve current behavior.
+- [x] 4.4 Extend `AuthService.register` normal mode to use shared role provisioning and preserve current behavior.
 - [ ] 4.5 Add invitation registration path to `AuthService.register` using a Serializable transaction, bounded P2034 retry, and shared provisioning methods that receive the same transaction client.
 - [ ] 4.6 Update Auth Swagger documentation for normal register, invitation register, functional errors, and `activeMembership.permissions`.
 - [ ] 4.7 Update Auth unit tests for normal register compatibility, invitation register success, mode exclusivity validation, duplicate email, unusable invitation tokens, transaction-client propagation, atomic failure without partial records, and permissions in Auth responses.

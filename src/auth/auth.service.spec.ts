@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 import { ConfigService } from '@nestjs/config';
+import { OrganizationRolesService } from '../organization-provisioning/services/organization-roles.service';
 import { AuthService } from './auth.service';
 
 function makeServices() {
@@ -37,11 +38,8 @@ function makeServices() {
     roles: [{ role: { key: 'OWNER' } }],
   };
 
-  const prisma: any = {
-    $transaction: jest.fn((fn: (tx: any) => any) => fn(prisma)),
+  const tx: any = {
     user: {
-      findUnique: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
       create: jest.fn(({ data }: any) => ({ id: 'u1', ...data })),
     },
     userCredential: {
@@ -49,19 +47,31 @@ function makeServices() {
     },
     organization: {
       create: jest.fn(({ data }: any) => ({ id: 'o1', ...data })),
-      findUnique: jest.fn(),
     },
     organizationMembership: {
       create: jest.fn(({ data }: any) => ({ id: 'm1', ...data })),
-      findMany: jest.fn(),
-      findFirst: jest.fn(),
     },
     role: { upsert: jest.fn(({ create }: any) => ({ id: 'r1', ...create })) },
     permission: { findMany: jest.fn() },
-    rolePermission: { upsert: jest.fn() },
+    rolePermission: { deleteMany: jest.fn(), upsert: jest.fn() },
     membershipRole: { upsert: jest.fn() },
     userSession: {
       create: jest.fn(({ data }: any) => ({ id: data.id, ...data })),
+    },
+  };
+
+  const prisma: any = {
+    $transaction: jest.fn((fn: (transactionClient: any) => any) => fn(tx)),
+    user: {
+      findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+    },
+    organization: {
+      findUnique: jest.fn(),
+    },
+    organizationMembership: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
     },
   };
 
@@ -70,12 +80,14 @@ function makeServices() {
     passwordService as any,
     tokenService as any,
     sessionService as any,
+    new OrganizationRolesService(),
     configService,
   );
 
   return {
     service,
     prisma,
+    tx,
     passwordService,
     tokenService,
     sessionService,
@@ -84,10 +96,15 @@ function makeServices() {
 }
 
 describe('AuthService', () => {
-  it('registro exitoso crea usuario, org, membership, OWNER y sesión', async () => {
-    const { service, prisma, membership } = makeServices();
+  it('registro exitoso crea usuario, org, membership, OWNER, MEMBER y sesión', async () => {
+    const { service, prisma, tx, membership } = makeServices();
     prisma.user.findUnique.mockResolvedValue(null);
-    prisma.permission.findMany.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]);
+    tx.permission.findMany
+      .mockResolvedValueOnce([{ id: 'p1' }, { id: 'p2' }])
+      .mockResolvedValueOnce([
+        { id: 'p-org-read', key: 'organization.read' },
+        { id: 'p-members-read', key: 'members.read' },
+      ]);
     prisma.organization.findUnique.mockResolvedValue(null);
     prisma.organizationMembership.findMany.mockResolvedValue([membership]);
     prisma.user.findUniqueOrThrow.mockResolvedValue({
@@ -106,11 +123,25 @@ describe('AuthService', () => {
       organizationName: 'Acme',
     });
 
-    expect(prisma.user.create).toHaveBeenCalled();
-    expect(prisma.organization.create).toHaveBeenCalled();
-    expect(prisma.role.upsert).toHaveBeenCalled();
-    expect(prisma.rolePermission.upsert).toHaveBeenCalledTimes(2);
-    expect(prisma.userSession.create).toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.user.create).toHaveBeenCalled();
+    expect(tx.organization.create).toHaveBeenCalled();
+    expect(tx.role.upsert).toHaveBeenCalledTimes(2);
+    expect(tx.role.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ key: 'OWNER', name: 'Owner' }),
+      }),
+    );
+    expect(tx.role.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ key: 'MEMBER', name: 'Member' }),
+      }),
+    );
+    expect(tx.permission.findMany).toHaveBeenCalledWith({
+      where: { key: { in: ['organization.read', 'members.read'] } },
+    });
+    expect(tx.rolePermission.upsert).toHaveBeenCalledTimes(4);
+    expect(tx.userSession.create).toHaveBeenCalled();
     expect(result.response.requiresOrganizationSelection).toBe(false);
     expect(result.response.activeOrganization).not.toBeNull();
     expect(result.response.activeMembership?.roles).toContain('OWNER');
