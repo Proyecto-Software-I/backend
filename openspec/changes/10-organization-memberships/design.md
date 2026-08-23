@@ -87,6 +87,10 @@ The provisioning module encapsulates only shared domain primitives needed by Aut
 - `OrganizationRolesService`: ensure `OWNER` and `MEMBER` roles and role permissions idempotently.
 - invitation acceptance/provisioning operations: validate an invitation, create or activate a membership only when allowed by the spec, assign MEMBER, and mark invitations accepted inside a transaction.
 
+Provisioning methods that participate in an atomic operation MUST accept an explicit Prisma transaction client, using `Prisma.TransactionClient` or the equivalent generated type for the installed Prisma version. If a caller starts `prisma.$transaction(async (tx) => { ... })`, every provisioning operation that belongs to that aggregate operation MUST use the same `tx`. The provisioning module MUST NOT open a nested transaction or use the root `PrismaService` inside those transactional methods. A non-transaction convenience wrapper may exist only for operations that are not part of a larger atomic flow.
+
+Critical transaction-bound provisioning methods include ensuring MEMBER, assigning MEMBER, creating membership plus MembershipRole, invitation state transitions, existing-user invitation acceptance, and register-with-invitation.
+
 Required module direction:
 
 ```text
@@ -148,47 +152,69 @@ Treat `PENDING + expiresAt < now` as expired whenever an invitation is listed, p
 
 This avoids cron while keeping state coherent enough for operators and tests. Expired invitations do not block new invitations for the same email.
 
-### D8. Invitation creation duplicate strategy
+### D8. Serializable transactions and retry policy
 
-There is no database partial unique constraint for one active pending invitation per organization/email. Do not add a migration for this issue. The service should use a transaction to:
+Transactions that protect concurrent invariants MUST use `Prisma.TransactionIsolationLevel.Serializable` or the exact equivalent API exposed by the installed Prisma version for PostgreSQL. This applies at minimum to:
+
+- invitation creation, to protect one current `PENDING` invitation per organization and normalized email;
+- invitation acceptance, to protect single-use `PENDING -> ACCEPTED` consumption;
+- last-owner suspend/remove operations, to prevent concurrent mutations from leaving zero active owners;
+- register-with-invitation, because it combines user, credential, membership, role assignment, session creation, and invitation consumption.
+
+Serializable conflicts can surface as Prisma `P2034`. The implementation MUST define a bounded helper such as `runSerializableTransactionWithRetry(callback)` that:
+
+1. starts a new Serializable transaction for each attempt;
+2. executes the whole callback inside that transaction;
+3. retries only when Prisma reports `P2034`;
+4. never retries functional errors such as `MEMBER_ALREADY_EXISTS` or `LAST_OWNER_REQUIRED`;
+5. uses a small explicit limit of 3 total attempts;
+6. propagates the error after the limit;
+7. never reuses a `TransactionClient` after rollback.
+
+The retry wraps the complete transaction, not individual operations inside a failed transaction.
+
+### D9. Invitation creation duplicate strategy
+
+There is no database partial unique constraint for one active pending invitation per organization/email. Do not add a migration for this issue. The service MUST use one Serializable transaction with bounded `P2034` retry to:
 
 1. normalize email;
-2. expire stale pending invitations for that organization/email;
-3. check active membership and removed membership constraints;
-4. check remaining non-expired pending invitations;
-5. create the new invitation.
+2. check whether the target user already has an `ACTIVE`, `SUSPENDED`, or `REMOVED` membership in the active organization, rejecting with `MEMBER_ALREADY_EXISTS` if so;
+3. expire stale pending invitations for that organization/email;
+4. check remaining non-expired pending invitations, rejecting with `INVITATION_ALREADY_PENDING` if one exists;
+5. ensure MEMBER using the same transaction client;
+6. create the new invitation with `invitedByUserId = authenticated user id`, `proposedRoleId = MEMBER role id`, `tokenHash`, `expiresAt`, and status `PENDING`.
 
-Concurrent duplicate creation remains the hardest case without a DB constraint. Use the strongest Prisma transaction isolation supported by the current Prisma/Postgres setup for the create operation where available. If exact serialization is not supported by the generated client, keep the check and creation in a transaction and add E2E/unit coverage documenting expected behavior. Do not add raw SQL unless implementation proves Prisma cannot satisfy the issue safely.
+The absence of a partial unique constraint is handled within the approved no-migration scope by Serializable isolation, bounded retry, and concurrency tests. Do not add raw SQL and do not modify schema.
 
-### D9. Existing-user acceptance transaction
+### D10. Existing-user acceptance transaction
 
-For `POST /api/invitations/:token/accept`, run a transaction that:
+For `POST /api/invitations/:token/accept`, run one Serializable transaction with bounded `P2034` retry. The invitation service MUST pass the same `Prisma.TransactionClient` to OrganizationProvisioningModule operations. The transaction must:
 
-1. hashes token and loads invitation by `tokenHash`;
-2. maps missing/revoked/accepted/expired states to the functional errors;
-3. compares normalized authenticated user email to normalized invitation email;
-4. ensures MEMBER role for the invitation organization;
-5. rejects existing `ACTIVE`, `SUSPENDED`, or `REMOVED` memberships rather than restoring them;
-6. creates `OrganizationMembership ACTIVE` with `joinedAt = now`;
-7. creates `MembershipRole` for MEMBER;
-8. marks invitation `ACCEPTED` and sets `acceptedAt = now`.
+1. hash token and load invitation by `tokenHash`;
+2. map missing/revoked/accepted/expired states to the functional errors;
+3. compare normalized authenticated user email to normalized invitation email;
+4. ensure MEMBER role for the invitation organization using the same transaction client;
+5. reject existing `ACTIVE`, `SUSPENDED`, or `REMOVED` memberships rather than restoring them;
+6. create `OrganizationMembership ACTIVE` with `joinedAt = now`;
+7. create `MembershipRole` for MEMBER;
+8. mark invitation `ACCEPTED` and set `acceptedAt = now`.
 
 Use an atomic state transition for replay resistance, for example `updateMany` with `where: { id, status: PENDING }` and require `count = 1`, or equivalent transaction-safe logic. The existing unique `OrganizationMembership(organizationId, userId)` and `MembershipRole(membershipId, roleId)` constraints protect against duplicate memberships and duplicate role assignments.
 
 The endpoint does not select the organization in the existing user's session. The frontend must call `POST /api/auth/select-organization` afterward.
 
-### D10. Register-with-invitation transaction
+### D11. Register-with-invitation transaction
 
 Extend `RegisterDto` and `AuthService.register` to support two mutually exclusive input modes. Keep the normal registration path backward compatible.
 
-Invitation registration should reuse the same invitation validation and acceptance primitives but also create credentials and a session. Transaction shape:
+Invitation registration should reuse the same invitation validation and acceptance primitives but also create credentials and a session. It MUST run inside one Serializable transaction with bounded `P2034` retry. `AuthService` MUST pass the same `Prisma.TransactionClient` to OrganizationProvisioningModule and must not call provisioning methods that use root `PrismaService` or open another transaction. Transaction shape:
 
 1. hash `invitationToken` and validate pending, non-expired invitation;
 2. use invitation email as the new user's normalized email;
 3. reject duplicate user email;
 4. hash password;
 5. create `User` and `UserCredential`;
-6. ensure MEMBER;
+6. ensure MEMBER using the same transaction client;
 7. create `OrganizationMembership ACTIVE` and `MembershipRole MEMBER`;
 8. mark invitation `ACCEPTED` and set `acceptedAt`;
 9. create `UserSession` with `organizationId` set to invitation organization;
@@ -196,7 +222,7 @@ Invitation registration should reuse the same invitation validation and acceptan
 
 Auth should not become a general Organizations service. The shared acceptance/provisioning logic should sit below both domains and depend only on Prisma and small helpers.
 
-### D11. Membership management and session tenant invalidation
+### D12. Membership management and session tenant invalidation
 
 Membership operations are soft-state updates only:
 
@@ -216,18 +242,20 @@ revokedAt = null
 
 Set `organizationId = null`; do not revoke the full session. This makes old access tokens fail because `JwtAuthGuard` compares JWT `org` against the database session. Refresh then emits a token with `org: null`, `/auth/me` requires selection, and `select-organization` rejects the suspended/removed membership.
 
-### D12. Last owner protection and concurrency
+### D13. Last owner protection and concurrency
 
-Before suspending or removing a target membership, inside the same transaction:
+Suspend/remove operations that may affect an owner MUST execute inside one Serializable transaction with bounded `P2034` retry. Inside the same transaction:
 
 1. load the target by `id + organizationId` including roles;
 2. determine whether it is `ACTIVE` and has organization role `OWNER`;
 3. if so, count `ACTIVE` owner memberships for the same organization;
 4. reject with `LAST_OWNER_REQUIRED` when count is 1.
+5. otherwise mutate the membership;
+6. clear `organizationId` on matching sessions for suspended/removed memberships.
 
-This covers self-suspend and self-remove. The race risk is two owners being removed concurrently. Prefer Prisma transaction isolation strong enough for this operation, such as serializable isolation if available in the current Prisma version. If implementation cannot use serializable isolation cleanly, keep the check and update in one transaction and consider retrying serialization failures. Avoid raw SQL locks unless necessary.
+This covers self-suspend and self-remove. The last-owner check MUST NOT be performed outside a transaction followed by a separate mutation. Do not use raw SQL locks for this issue.
 
-### D13. Auth response permissions
+### D14. Auth response permissions
 
 Centralize Auth membership view construction so register, login, select-organization, and `/auth/me` all return consistent `activeMembership.permissions` when an active organization exists.
 
@@ -241,7 +269,7 @@ OrganizationMembership
 
 Deduplicate permission keys. `memberships` can include permissions too if the implementation chooses, but the spec requires `activeMembership.permissions` at minimum. Do not add permissions to JWT payloads.
 
-### D14. Error handling
+### D15. Error handling
 
 Continue using `AuthError` and the global `HttpExceptionFilter`. The class name is auth-specific but it already provides the repository's functional error mechanism. Do not introduce a second exception format for Organizations.
 
@@ -259,7 +287,7 @@ Required mappings:
 - `LAST_OWNER_REQUIRED` -> 409
 - `MEMBER_ACCESS_DENIED` -> 403
 
-### D15. Swagger and DTOs
+### D16. Swagger and DTOs
 
 Document all new endpoints with `@ApiTags`, `@ApiBearerAuth` where applicable, `@ApiOperation`, DTO schemas, success responses, and functional errors. Register must clearly show the normal mode and invitation mode as mutually exclusive. Existing Auth response docs must include `activeMembership.permissions`.
 
@@ -269,9 +297,9 @@ Document all new endpoints with `@ApiTags`, `@ApiBearerAuth` where applicable, `
 - [Risk] IDOR on `membershipId` or `invitationId` -> Mitigation: always query by `id + active organizationId`; cross-tenant IDs return not found errors.
 - [Risk] Tenant leakage through client-supplied `organizationId` -> Mitigation: administrative endpoints never accept tenant IDs for authorization and only use `UserSession.organizationId`.
 - [Risk] Invitation token leakage -> Mitigation: store only SHA-256 hash; return plaintext only in creation `acceptanceUrl`; omit token fields elsewhere.
-- [Risk] Invitation replay -> Mitigation: atomic `PENDING -> ACCEPTED` transition and transaction-scoped membership creation.
-- [Risk] Duplicate pending invitations under concurrency -> Mitigation: expire stale pending records and check/create in a transaction with strongest available isolation; rely on service-level handling because no schema change is planned.
-- [Risk] Last-owner race -> Mitigation: perform count and mutation in the same transaction, prefer serializable isolation/retry where Prisma supports it.
+- [Risk] Invitation replay -> Mitigation: atomic `PENDING -> ACCEPTED` transition inside a Serializable transaction with bounded `P2034` retry.
+- [Risk] Duplicate pending invitations under concurrency -> Mitigation: expire stale pending records and check/create in one Serializable transaction with bounded `P2034` retry; rely on service-level handling because no schema change is planned.
+- [Risk] Last-owner race -> Mitigation: perform count, mutation, and session tenant invalidation in the same Serializable transaction with bounded `P2034` retry.
 - [Risk] Stale permissions -> Mitigation: permissions are read from DB per protected request and optionally cached only on the request object.
 - [Risk] Register backward compatibility -> Mitigation: keep normal payload valid and add invitation mode as mutually exclusive alternative.
 - [Risk] E2E complexity with PostgreSQL -> Mitigation: keep service unit tests focused and run E2E only after `db:ensure`, `db:deploy`, and `db:seed`.

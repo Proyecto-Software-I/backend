@@ -36,12 +36,41 @@ The system SHALL expose `GET /api/organizations/current/members` for authenticat
 - **THEN** the system responds `403` with code `MEMBER_ACCESS_DENIED`
 
 ### Requirement: Invitation list exposes current tenant invitations without secrets
-The system SHALL expose `GET /api/organizations/current/invitations` for authenticated users with `members.read`. The response SHALL include only invitations whose `organizationId` equals the active tenant and SHALL omit plaintext tokens, `tokenHash`, internal role IDs, and unrelated tenant data. A `PENDING` invitation whose `expiresAt` is in the past SHALL be treated as `EXPIRED` and SHALL be persisted as `EXPIRED` opportunistically when listed.
+The system SHALL expose `GET /api/organizations/current/invitations` for authenticated users with `members.read`. The response SHALL include only invitations whose `organizationId` equals the active tenant and SHALL omit plaintext tokens, `tokenHash`, `invitedByUserId`, `proposedRoleId`, secrets, and unrelated tenant data. Each invitation item SHALL include `id`, `email`, `status`, `expiresAt`, `createdAt`, `invitedBy` safe fields (`id`, `displayName`) from the persisted `invitedByUserId` relation, and `proposedRole` safe fields (`key`, `name`) from the persisted `proposedRoleId` relation. A `PENDING` invitation whose `expiresAt` is in the past SHALL be treated as `EXPIRED` and SHALL be persisted as `EXPIRED` opportunistically when listed.
+
+The successful response SHALL have this shape:
+
+```json
+{
+  "invitations": [
+    {
+      "id": "...",
+      "email": "...",
+      "status": "PENDING",
+      "expiresAt": "...",
+      "createdAt": "...",
+      "invitedBy": {
+        "id": "...",
+        "displayName": "..."
+      },
+      "proposedRole": {
+        "key": "MEMBER",
+        "name": "Member"
+      }
+    }
+  ]
+}
+```
 
 #### Scenario: List current organization invitations
 - **GIVEN** an authenticated user has an active tenant and `members.read`
 - **WHEN** the user sends `GET /api/organizations/current/invitations`
-- **THEN** the system responds `200 OK` with invitations only for the active organization and without token hashes
+- **THEN** the system responds `200 OK` with invitations only for the active organization, including safe `invitedBy` and `proposedRole` objects, and without token hashes or internal relation IDs
+
+#### Scenario: Invitation list returns persisted invitedBy and proposedRole
+- **GIVEN** an invitation in the active organization has persisted `invitedByUserId` and `proposedRoleId`
+- **WHEN** an authorized user lists current organization invitations
+- **THEN** the response includes `invitedBy.id`, `invitedBy.displayName`, `proposedRole.key`, and `proposedRole.name` derived from those relations
 
 #### Scenario: Expired pending invitations are surfaced as expired
 - **GIVEN** an invitation in the active organization is `PENDING` and its `expiresAt` is earlier than now
@@ -49,17 +78,32 @@ The system SHALL expose `GET /api/organizations/current/invitations` for authent
 - **THEN** the response shows that invitation as `EXPIRED` and the system records that expired status
 
 ### Requirement: Invitation creation issues a single-use hashed token
-The system SHALL expose `POST /api/organizations/current/invitations` for authenticated users with `members.manage`. The request body SHALL require a valid `email`, normalized with trim and lowercase. The system SHALL reject the request if an `ACTIVE` user is already a member of the active organization, if a non-expired `PENDING` invitation for that normalized email already exists in the active organization, or if the target has a `REMOVED` membership that would be restored by invitation. Successful creation SHALL create a `PENDING` invitation expiring in 7 days, store only a cryptographic hash of the token, and return an `acceptanceUrl` containing the plaintext token exactly once in the creation response.
+The system SHALL expose `POST /api/organizations/current/invitations` for authenticated users with `members.manage`. The request body SHALL require a valid `email`, normalized with trim and lowercase. The system SHALL reject the request with `409 MEMBER_ALREADY_EXISTS` if the target user already has an `ACTIVE`, `SUSPENDED`, or `REMOVED` membership in the active organization. The only path for `SUSPENDED -> ACTIVE` is administrative membership reactivation, not invitation. If no membership exists, the system SHALL reject a non-expired `PENDING` invitation duplicate for that normalized email with `409 INVITATION_ALREADY_PENDING`. Successful creation SHALL create a `PENDING` invitation expiring in 7 days, store only a cryptographic hash of the token, persist `invitedByUserId` as the authenticated user ID, persist `proposedRoleId` as the active organization's MEMBER role ID, and return an `acceptanceUrl` containing the plaintext token exactly once in the creation response.
 
 #### Scenario: Create invitation
 - **GIVEN** an authenticated user has an active tenant and `members.manage`
 - **WHEN** the user sends `POST /api/organizations/current/invitations` with a valid email that is not already an active member and has no pending invitation
-- **THEN** the system responds `201 Created` with invitation metadata and an `acceptanceUrl`, stores only `tokenHash`, and sets `expiresAt` to 7 days after creation
+- **THEN** the system responds `201 Created` with safe invitation metadata and an `acceptanceUrl`, stores only `tokenHash`, persists `invitedByUserId` and MEMBER `proposedRoleId`, and sets `expiresAt` to 7 days after creation
 
 #### Scenario: Active member cannot be invited again
 - **GIVEN** an active user is already an `ACTIVE` member of the active organization
 - **WHEN** an authorized user sends an invitation for that email
-- **THEN** the system responds `409` with code `MEMBER_ALREADY_EXISTS`
+- **THEN** the system responds `409` with code `MEMBER_ALREADY_EXISTS` and does not create an OrganizationInvitation
+
+#### Scenario: Suspended member cannot be invited again
+- **GIVEN** a user already has a `SUSPENDED` membership in the active organization
+- **WHEN** an authorized user sends an invitation for that user's email
+- **THEN** the system responds `409` with code `MEMBER_ALREADY_EXISTS` and does not create an OrganizationInvitation
+
+#### Scenario: Removed member cannot be invited again
+- **GIVEN** a user already has a `REMOVED` membership in the active organization
+- **WHEN** an authorized user sends an invitation for that user's email
+- **THEN** the system responds `409` with code `MEMBER_ALREADY_EXISTS` and does not create an OrganizationInvitation
+
+#### Scenario: Invitation stores inviter and proposed role
+- **GIVEN** an authenticated user creates an invitation in the active organization
+- **WHEN** invitation creation succeeds
+- **THEN** the invitation stores `invitedByUserId` equal to the authenticated user ID and `proposedRoleId` equal to the organization's MEMBER role ID
 
 #### Scenario: Duplicate pending invitation is rejected
 - **GIVEN** a non-expired `PENDING` invitation already exists for the normalized email in the active organization
