@@ -4,7 +4,7 @@
 - [x] 1.2 Implement `PermissionGuard` to require `JwtAuthGuard` context, reject null tenant with `TENANT_REQUIRED`, load active membership permissions from Prisma, and reject missing permissions with `MEMBER_ACCESS_DENIED`.
 - [x] 1.3 Add request-local permission/membership reuse in `PermissionGuard` without adding global permission cache or JWT permission claims.
 - [x] 1.4 Add unit tests for `PermissionGuard`: OWNER with `members.manage`, MEMBER without `members.manage`, null tenant, missing active membership, and current DB permissions.
-- [ ] 1.5 Create `OrganizationsModule` and wire it into `AppModule` without introducing `AuthModule <-> OrganizationsModule` circular imports.
+- [x] 1.5 Create `OrganizationsModule` and wire it into `AppModule` without introducing `AuthModule <-> OrganizationsModule` circular imports.
 - [x] 1.6 Create `OrganizationProvisioningModule` or equivalent neutral module imported by Auth and Organizations, depending only on `PrismaModule` and not importing Auth or Organizations.
 
 ## 2. Organization Role Provisioning
@@ -38,7 +38,7 @@
 - [ ] 5.2 Implement invitation token generation and SHA-256 hashing using Node crypto or a neutral helper, storing only `tokenHash`.
 - [ ] 5.3 Implement invitation expiration handling that treats stale `PENDING` records as `EXPIRED` and persists expiration opportunistically.
 - [ ] 5.4 Implement `InvitationsService.createInvitation` with a Serializable transaction, bounded P2034 retry, tenant-scoped checks for normalized email, ACTIVE/SUSPENDED/REMOVED membership conflict, duplicate pending invitation, same-tx MEMBER provisioning, 7-day expiry, `invitedByUserId`, `proposedRoleId`, and one-time `acceptanceUrl` return.
-- [ ] 5.5 Implement `InvitationsService.listInvitations` for current-tenant listing with safe `invitedBy` and `proposedRole` relation fields and without plaintext tokens, token hashes, or internal relation IDs.
+- [x] 5.5 Implement `InvitationsService.listInvitations` for current-tenant listing with safe `invitedBy` and `proposedRole` relation fields and without plaintext tokens, token hashes, or internal relation IDs.
 - [ ] 5.6 Implement `InvitationsService.revokeInvitation` using `invitationId + active organizationId` and state-specific contracts for PENDING, ACCEPTED, EXPIRED, REVOKED, missing, and cross-tenant invitations.
 - [ ] 5.7 Implement public invitation preview by token hash with safe response fields and functional errors for missing, expired, revoked, and accepted invitations.
 - [ ] 5.8 Implement existing-user invitation acceptance with Serializable transaction, bounded P2034 retry, authenticated email match, atomic `PENDING -> ACCEPTED`, same-tx ACTIVE membership creation, same-tx MEMBER assignment, and no automatic organization selection.
@@ -47,7 +47,7 @@
 ## 6. Membership Services And Session Tenant Invalidation
 
 - [ ] 6.1 Create DTOs for membership status updates with allowed target statuses and Swagger metadata.
-- [ ] 6.2 Implement current-tenant member listing with `members.read`, safe user fields, membership status, joined timestamp, and role keys.
+- [x] 6.2 Implement current-tenant member listing with `members.read`, safe user fields, membership status, joined timestamp, and role keys.
 - [ ] 6.3 Implement membership status update with `id + organizationId` lookup and allowed transitions `ACTIVE -> SUSPENDED` and `SUSPENDED -> ACTIVE`.
 - [ ] 6.4 Implement membership removal as soft state `ACTIVE/SUSPENDED -> REMOVED` without physical delete.
 - [ ] 6.5 Implement last-active-owner protection inside a Serializable transaction with bounded P2034 retry, including self-suspend and self-remove.
