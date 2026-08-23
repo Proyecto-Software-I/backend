@@ -1,7 +1,23 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
+import { InvitationStatus } from '../generated/prisma/client';
 import { OrganizationRolesService } from '../organization-provisioning/services/organization-roles.service';
 import { AuthService } from './auth.service';
+
+const futureDate = () => new Date(Date.now() + 60_000);
+const pastDate = () => new Date(Date.now() - 60_000);
+
+function invitation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'invitation-1',
+    email: ' Invited@Example.COM ',
+    status: InvitationStatus.PENDING,
+    expiresAt: futureDate(),
+    organizationId: 'org-invited',
+    ...overrides,
+  };
+}
 
 function makeServices() {
   const passwordService = {
@@ -40,6 +56,7 @@ function makeServices() {
 
   const tx: any = {
     user: {
+      findUnique: jest.fn(),
       create: jest.fn(({ data }: any) => ({ id: 'u1', ...data })),
     },
     userCredential: {
@@ -50,6 +67,10 @@ function makeServices() {
     },
     organizationMembership: {
       create: jest.fn(({ data }: any) => ({ id: 'm1', ...data })),
+    },
+    organizationInvitation: {
+      findUnique: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     role: { upsert: jest.fn(({ create }: any) => ({ id: 'r1', ...create })) },
     permission: { findMany: jest.fn() },
@@ -75,12 +96,17 @@ function makeServices() {
     },
   };
 
+  const serializableTransactionService = {
+    run: jest.fn((fn: (transactionClient: any) => any) => fn(tx)),
+  };
+
   const service = new AuthService(
     prisma,
     passwordService as any,
     tokenService as any,
     sessionService as any,
     new OrganizationRolesService(),
+    serializableTransactionService as any,
     configService,
   );
 
@@ -91,6 +117,7 @@ function makeServices() {
     passwordService,
     tokenService,
     sessionService,
+    serializableTransactionService,
     membership,
   };
 }
@@ -159,6 +186,289 @@ describe('AuthService', () => {
         firstName: 'O',
         lastName: 'M',
         organizationName: 'Acme',
+      }),
+    ).rejects.toMatchObject({ code: 'EMAIL_ALREADY_REGISTERED' });
+  });
+
+  it('registro por invitación crea User, Credential, MEMBER membership y sesión en org invitada', async () => {
+    const { service, prisma, tx, membership, serializableTransactionService } =
+      makeServices();
+    membership.roles = [{ role: { key: 'MEMBER' } }];
+    membership.organization = {
+      id: 'org-invited',
+      name: 'Invited Org',
+      slug: 'invited-org',
+    };
+    tx.organizationInvitation.findUnique.mockResolvedValue(invitation());
+    tx.user.findUnique.mockResolvedValue(null);
+    tx.permission.findMany.mockResolvedValue([
+      { id: 'p-org-read', key: 'organization.read' },
+      { id: 'p-members-read', key: 'members.read' },
+    ]);
+    prisma.organizationMembership.findMany.mockResolvedValue([membership]);
+
+    const result = await service.register({
+      password: 'SecurePassword123!',
+      firstName: 'Invited',
+      lastName: 'User',
+      invitationToken: 'plain-token',
+    });
+
+    const expectedHash = createHash('sha256')
+      .update('plain-token')
+      .digest('hex');
+    expect(serializableTransactionService.run).toHaveBeenCalledTimes(1);
+    expect(tx.organizationInvitation.findUnique).toHaveBeenCalledWith({
+      where: { tokenHash: expectedHash },
+      select: expect.objectContaining({ organizationId: true }),
+    });
+    expect(tx.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'invited@example.com' },
+      select: { id: true },
+    });
+    expect(tx.organization.create).not.toHaveBeenCalled();
+    expect(tx.role.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ key: 'MEMBER' }),
+      }),
+    );
+    expect(tx.role.upsert).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ key: 'OWNER' }),
+      }),
+    );
+    expect(tx.organizationInvitation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'invitation-1', status: InvitationStatus.PENDING },
+      data: { status: InvitationStatus.ACCEPTED, acceptedAt: expect.any(Date) },
+    });
+    expect(
+      tx.organizationInvitation.updateMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(tx.user.create.mock.invocationCallOrder[0]);
+    expect(tx.user.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        email: 'invited@example.com',
+        firstName: 'Invited',
+        lastName: 'User',
+        status: 'ACTIVE',
+      }),
+    });
+    expect(tx.userCredential.create).toHaveBeenCalledWith({
+      data: { userId: 'u1', passwordHash: 'phash' },
+    });
+    expect(tx.organizationMembership.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: 'org-invited',
+        userId: 'u1',
+        status: 'ACTIVE',
+        joinedAt: expect.any(Date),
+      }),
+      select: { id: true },
+    });
+    expect(tx.membershipRole.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ membershipId: 'm1' }),
+      }),
+    );
+    expect(tx.userSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'u1',
+        organizationId: 'org-invited',
+      }),
+    });
+    expect(result.response.activeOrganization?.id).toBe('org-invited');
+    expect(result.response.activeMembership?.roles).toEqual(['MEMBER']);
+    expect(result.response.auth.accessToken).toContain('org-invited');
+    expect(
+      JSON.stringify([
+        tx.organizationInvitation.findUnique.mock.calls,
+        tx.organizationInvitation.updateMany.mock.calls,
+      ]),
+    ).not.toContain('plain-token');
+  });
+
+  it.each([
+    [null, 'INVITATION_NOT_FOUND', 404],
+    [
+      invitation({ status: InvitationStatus.EXPIRED }),
+      'INVITATION_EXPIRED',
+      410,
+    ],
+    [
+      invitation({ status: InvitationStatus.REVOKED }),
+      'INVITATION_REVOKED',
+      410,
+    ],
+    [
+      invitation({ status: InvitationStatus.ACCEPTED }),
+      'INVITATION_ALREADY_ACCEPTED',
+      409,
+    ],
+    [invitation({ expiresAt: pastDate() }), 'INVITATION_EXPIRED', 410],
+  ])(
+    'registro por invitación rechaza token no usable %#',
+    async (storedInvitation, code, status) => {
+      const { service, tx } = makeServices();
+      tx.organizationInvitation.findUnique.mockResolvedValue(storedInvitation);
+
+      await expect(
+        service.register({
+          password: 'SecurePassword123!',
+          firstName: 'Invited',
+          lastName: 'User',
+          invitationToken: 'plain-token',
+        }),
+      ).rejects.toMatchObject({ code, status });
+      expect(tx.user.create).not.toHaveBeenCalled();
+      expect(tx.userCredential.create).not.toHaveBeenCalled();
+      expect(tx.organizationMembership.create).not.toHaveBeenCalled();
+      expect(tx.userSession.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('registro por invitación expirada persiste EXPIRED de forma condicionada', async () => {
+    const { service, tx } = makeServices();
+    tx.organizationInvitation.findUnique.mockResolvedValue(
+      invitation({ expiresAt: pastDate() }),
+    );
+
+    await expect(
+      service.register({
+        password: 'SecurePassword123!',
+        firstName: 'Invited',
+        lastName: 'User',
+        invitationToken: 'plain-token',
+      }),
+    ).rejects.toMatchObject({ code: 'INVITATION_EXPIRED' });
+    expect(tx.organizationInvitation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'invitation-1', status: InvitationStatus.PENDING },
+      data: { status: InvitationStatus.EXPIRED },
+    });
+  });
+
+  it('registro por invitación rechaza User existente con EMAIL_ALREADY_REGISTERED antes del claim', async () => {
+    const { service, tx } = makeServices();
+    tx.organizationInvitation.findUnique.mockResolvedValue(invitation());
+    tx.user.findUnique.mockResolvedValue({ id: 'existing-user' });
+
+    await expect(
+      service.register({
+        password: 'SecurePassword123!',
+        firstName: 'Invited',
+        lastName: 'User',
+        invitationToken: 'plain-token',
+      }),
+    ).rejects.toMatchObject({ code: 'EMAIL_ALREADY_REGISTERED' });
+    expect(tx.organizationInvitation.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: InvitationStatus.ACCEPTED }),
+      }),
+    );
+    expect(tx.user.create).not.toHaveBeenCalled();
+  });
+
+  it('registro por invitación con claim count 0 reconsulta ACCEPTED y no crea User', async () => {
+    const { service, tx } = makeServices();
+    tx.organizationInvitation.findUnique
+      .mockResolvedValueOnce(invitation())
+      .mockResolvedValueOnce(invitation({ status: InvitationStatus.ACCEPTED }));
+    tx.user.findUnique.mockResolvedValue(null);
+    tx.permission.findMany.mockResolvedValue([
+      { id: 'p-org-read', key: 'organization.read' },
+      { id: 'p-members-read', key: 'members.read' },
+    ]);
+    tx.organizationInvitation.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.register({
+        password: 'SecurePassword123!',
+        firstName: 'Invited',
+        lastName: 'User',
+        invitationToken: 'plain-token',
+      }),
+    ).rejects.toMatchObject({ code: 'INVITATION_ALREADY_ACCEPTED' });
+    expect(tx.user.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['user create failed', 'user', 'create'],
+    ['credential create failed', 'userCredential', 'create'],
+    ['membership create failed', 'organizationMembership', 'create'],
+    ['session create failed', 'userSession', 'create'],
+  ])(
+    'registro por invitación propaga fallo de %s dentro del transaction callback',
+    async (message, model, method) => {
+      const { service, tx } = makeServices();
+      tx.organizationInvitation.findUnique.mockResolvedValue(invitation());
+      tx.user.findUnique.mockResolvedValue(null);
+      tx.permission.findMany.mockResolvedValue([
+        { id: 'p-org-read', key: 'organization.read' },
+        { id: 'p-members-read', key: 'members.read' },
+      ]);
+      tx[model][method].mockRejectedValueOnce(new Error(message));
+
+      await expect(
+        service.register({
+          password: 'SecurePassword123!',
+          firstName: 'Invited',
+          lastName: 'User',
+          invitationToken: 'plain-token',
+        }),
+      ).rejects.toThrow(message);
+      expect(tx.organizationInvitation.updateMany).toHaveBeenCalledWith({
+        where: { id: 'invitation-1', status: InvitationStatus.PENDING },
+        data: {
+          status: InvitationStatus.ACCEPTED,
+          acceptedAt: expect.any(Date),
+        },
+      });
+    },
+  );
+
+  it('registro por invitación propaga fallo de MembershipRole dentro del transaction callback', async () => {
+    const { service, tx } = makeServices();
+    tx.organizationInvitation.findUnique.mockResolvedValue(invitation());
+    tx.user.findUnique.mockResolvedValue(null);
+    tx.permission.findMany.mockResolvedValue([
+      { id: 'p-org-read', key: 'organization.read' },
+      { id: 'p-members-read', key: 'members.read' },
+    ]);
+    tx.membershipRole.upsert.mockRejectedValueOnce(
+      new Error('membership role failed'),
+    );
+
+    await expect(
+      service.register({
+        password: 'SecurePassword123!',
+        firstName: 'Invited',
+        lastName: 'User',
+        invitationToken: 'plain-token',
+      }),
+    ).rejects.toThrow('membership role failed');
+    expect(tx.organizationInvitation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'invitation-1', status: InvitationStatus.PENDING },
+      data: { status: InvitationStatus.ACCEPTED, acceptedAt: expect.any(Date) },
+    });
+  });
+
+  it('registro por invitación mapea P2002 de User.email a EMAIL_ALREADY_REGISTERED', async () => {
+    const { service, tx } = makeServices();
+    tx.organizationInvitation.findUnique.mockResolvedValue(invitation());
+    tx.user.findUnique.mockResolvedValue(null);
+    tx.permission.findMany.mockResolvedValue([
+      { id: 'p-org-read', key: 'organization.read' },
+      { id: 'p-members-read', key: 'members.read' },
+    ]);
+    tx.user.create.mockRejectedValueOnce({
+      code: 'P2002',
+      meta: { target: ['email'] },
+    });
+
+    await expect(
+      service.register({
+        password: 'SecurePassword123!',
+        firstName: 'Invited',
+        lastName: 'User',
+        invitationToken: 'plain-token',
       }),
     ).rejects.toMatchObject({ code: 'EMAIL_ALREADY_REGISTERED' });
   });

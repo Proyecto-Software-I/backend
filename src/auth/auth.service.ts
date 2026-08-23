@@ -2,13 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import {
+  InvitationStatus,
   MembershipStatus,
   OrganizationStatus,
+  Prisma,
   UserStatus,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthError } from '../common/exceptions/auth-error';
+import { hashInvitationToken } from '../organization-provisioning/invitation-token';
 import { OrganizationRolesService } from '../organization-provisioning/services/organization-roles.service';
+import { SerializableTransactionService } from '../organization-provisioning/services/serializable-transaction.service';
 import { PasswordService } from './services/password.service';
 import { TokenService } from './services/token.service';
 import { SessionService } from './services/session.service';
@@ -62,6 +66,13 @@ export interface MeResponse {
   requiresOrganizationSelection: boolean;
 }
 
+interface InvitationRegisterInput {
+  password: string;
+  firstName: string;
+  lastName: string;
+  invitationToken: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly refreshTtlDays: number;
@@ -72,6 +83,7 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly sessionService: SessionService,
     private readonly organizationRolesService: OrganizationRolesService,
+    private readonly serializableTransactionService: SerializableTransactionService,
     configService: ConfigService,
   ) {
     this.refreshTtlDays =
@@ -79,13 +91,23 @@ export class AuthService {
   }
 
   async register(dto: {
-    email: string;
+    email?: string;
     password: string;
     firstName: string;
     lastName: string;
-    organizationName: string;
+    organizationName?: string;
+    invitationToken?: string;
   }): Promise<SessionResult> {
+    if (dto.invitationToken) {
+      return this.registerWithInvitation(dto as InvitationRegisterInput);
+    }
+
+    if (!dto.email || !dto.organizationName) {
+      throw new AuthError('VALIDATION_ERROR', 400, 'Registro inválido');
+    }
+
     const email = this.normalizeEmail(dto.email);
+    const organizationName = dto.organizationName;
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
       throw new AuthError(
@@ -95,77 +117,82 @@ export class AuthService {
       );
     }
 
-    const slug = await this.generateUniqueSlug(dto.organizationName);
+    const slug = await this.generateUniqueSlug(organizationName);
     const passwordHash = await this.passwordService.hash(dto.password);
     const sessionId = randomUUID();
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          displayName: `${dto.firstName} ${dto.lastName}`.trim(),
-          status: UserStatus.ACTIVE,
-          emailVerifiedAt: null,
-        },
-      });
+    const result = await this.mapUniqueEmailConflict(async () =>
+      this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            email,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            displayName: `${dto.firstName} ${dto.lastName}`.trim(),
+            status: UserStatus.ACTIVE,
+            emailVerifiedAt: null,
+          },
+        });
 
-      await tx.userCredential.create({
-        data: { userId: user.id, passwordHash },
-      });
+        await tx.userCredential.create({
+          data: { userId: user.id, passwordHash },
+        });
 
-      const organization = await tx.organization.create({
-        data: {
-          slug,
-          name: dto.organizationName,
-          status: OrganizationStatus.TRIAL,
-          deploymentMode: 'SAAS',
-        },
-      });
+        const organization = await tx.organization.create({
+          data: {
+            slug,
+            name: organizationName,
+            status: OrganizationStatus.TRIAL,
+            deploymentMode: 'SAAS',
+          },
+        });
 
-      const membership = await tx.organizationMembership.create({
-        data: {
-          organizationId: organization.id,
-          userId: user.id,
-          status: MembershipStatus.ACTIVE,
-          joinedAt: new Date(),
-        },
-      });
+        const membership = await tx.organizationMembership.create({
+          data: {
+            organizationId: organization.id,
+            userId: user.id,
+            status: MembershipStatus.ACTIVE,
+            joinedAt: new Date(),
+          },
+        });
 
-      const ownerRole = await this.organizationRolesService.ensureOwnerRole(
-        tx,
-        organization.id,
-      );
-      await this.organizationRolesService.ensureMemberRole(tx, organization.id);
-      await this.organizationRolesService.assignRoleToMembership(
-        tx,
-        membership.id,
-        ownerRole.id,
-      );
+        const ownerRole = await this.organizationRolesService.ensureOwnerRole(
+          tx,
+          organization.id,
+        );
+        await this.organizationRolesService.ensureMemberRole(
+          tx,
+          organization.id,
+        );
+        await this.organizationRolesService.assignRoleToMembership(
+          tx,
+          membership.id,
+          ownerRole.id,
+        );
 
-      const accessToken = this.tokenService.sign({
-        sub: user.id,
-        sid: sessionId,
-        org: organization.id,
-      });
-      const tokenHash = this.tokenService.hashToken(accessToken);
-      const refreshPlain = this.tokenService.generateRefreshToken();
-      const refreshHash = this.tokenService.hashToken(refreshPlain);
+        const accessToken = this.tokenService.sign({
+          sub: user.id,
+          sid: sessionId,
+          org: organization.id,
+        });
+        const tokenHash = this.tokenService.hashToken(accessToken);
+        const refreshPlain = this.tokenService.generateRefreshToken();
+        const refreshHash = this.tokenService.hashToken(refreshPlain);
 
-      await tx.userSession.create({
-        data: {
-          id: sessionId,
-          userId: user.id,
-          organizationId: organization.id,
-          tokenHash,
-          refreshTokenHash: refreshHash,
-          expiresAt: this.refreshExpiry(),
-        },
-      });
+        await tx.userSession.create({
+          data: {
+            id: sessionId,
+            userId: user.id,
+            organizationId: organization.id,
+            tokenHash,
+            refreshTokenHash: refreshHash,
+            expiresAt: this.refreshExpiry(),
+          },
+        });
 
-      return { user, organization, accessToken, refreshPlain };
-    });
+        return { user, organization, accessToken, refreshPlain };
+      }),
+    );
 
     const memberships = await this.getMembershipViews(result.user.id);
     const response = this.buildAuthResponse(
@@ -177,6 +204,159 @@ export class AuthService {
     );
 
     return { response, refreshToken: result.refreshPlain };
+  }
+
+  private async registerWithInvitation(
+    dto: InvitationRegisterInput,
+  ): Promise<SessionResult> {
+    const passwordHash = await this.passwordService.hash(dto.password);
+    const tokenHash = hashInvitationToken(dto.invitationToken);
+
+    const result = await this.mapUniqueEmailConflict(() =>
+      this.serializableTransactionService.run((tx) =>
+        this.registerWithInvitationInTransaction(
+          tx,
+          dto,
+          passwordHash,
+          tokenHash,
+        ),
+      ),
+    );
+
+    const memberships = await this.getMembershipViews(result.user.id);
+    const response = this.buildAuthResponse(
+      this.toUserView(result.user),
+      memberships,
+      result.organizationId,
+      false,
+      result.accessToken,
+    );
+
+    return { response, refreshToken: result.refreshPlain };
+  }
+
+  private async registerWithInvitationInTransaction(
+    tx: Prisma.TransactionClient,
+    dto: InvitationRegisterInput,
+    passwordHash: string,
+    tokenHash: string,
+  ): Promise<{
+    user: {
+      id: string;
+      email: string;
+      displayName: string | null;
+      firstName: string | null;
+      lastName: string | null;
+    };
+    organizationId: string;
+    accessToken: string;
+    refreshPlain: string;
+  }> {
+    const now = new Date();
+    const invitation = await tx.organizationInvitation.findUnique({
+      where: { tokenHash },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        expiresAt: true,
+        organizationId: true,
+      },
+    });
+
+    if (!invitation) {
+      throw new AuthError(
+        'INVITATION_NOT_FOUND',
+        404,
+        'Invitación no encontrada',
+      );
+    }
+
+    await this.ensureRegisterInvitationUsable(tx, invitation, now);
+
+    const email = this.normalizeEmail(invitation.email);
+    const existing = await tx.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new AuthError(
+        'EMAIL_ALREADY_REGISTERED',
+        409,
+        'El email ya está registrado',
+      );
+    }
+
+    const memberRole = await this.organizationRolesService.ensureMemberRole(
+      tx,
+      invitation.organizationId,
+    );
+    const accepted = await tx.organizationInvitation.updateMany({
+      where: { id: invitation.id, status: InvitationStatus.PENDING },
+      data: { status: InvitationStatus.ACCEPTED, acceptedAt: now },
+    });
+
+    if (accepted.count !== 1) {
+      await this.throwCurrentRegisterInvitationState(tx, invitation.id);
+    }
+
+    const user = await tx.user.create({
+      data: {
+        email,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        displayName: `${dto.firstName} ${dto.lastName}`.trim(),
+        status: UserStatus.ACTIVE,
+        emailVerifiedAt: null,
+      },
+    });
+
+    await tx.userCredential.create({
+      data: { userId: user.id, passwordHash },
+    });
+
+    const membership = await tx.organizationMembership.create({
+      data: {
+        organizationId: invitation.organizationId,
+        userId: user.id,
+        status: MembershipStatus.ACTIVE,
+        joinedAt: now,
+      },
+      select: { id: true },
+    });
+    await this.organizationRolesService.assignRoleToMembership(
+      tx,
+      membership.id,
+      memberRole.id,
+    );
+
+    const sessionId = randomUUID();
+    const accessToken = this.tokenService.sign({
+      sub: user.id,
+      sid: sessionId,
+      org: invitation.organizationId,
+    });
+    const sessionTokenHash = this.tokenService.hashToken(accessToken);
+    const refreshPlain = this.tokenService.generateRefreshToken();
+    const refreshHash = this.tokenService.hashToken(refreshPlain);
+
+    await tx.userSession.create({
+      data: {
+        id: sessionId,
+        userId: user.id,
+        organizationId: invitation.organizationId,
+        tokenHash: sessionTokenHash,
+        refreshTokenHash: refreshHash,
+        expiresAt: this.refreshExpiry(),
+      },
+    });
+
+    return {
+      user,
+      organizationId: invitation.organizationId,
+      accessToken,
+      refreshPlain,
+    };
   }
 
   async login(dto: {
@@ -341,6 +521,131 @@ export class AuthService {
   async logout(userId: string, sessionId: string): Promise<void> {
     await this.sessionService.revoke(sessionId);
     void userId;
+  }
+
+  private async ensureRegisterInvitationUsable(
+    tx: Prisma.TransactionClient,
+    invitation: {
+      id: string;
+      status: InvitationStatus;
+      expiresAt: Date;
+    },
+    now: Date,
+  ): Promise<void> {
+    if (
+      invitation.status === InvitationStatus.EXPIRED ||
+      invitation.expiresAt < now
+    ) {
+      if (invitation.status === InvitationStatus.PENDING) {
+        const expired = await tx.organizationInvitation.updateMany({
+          where: { id: invitation.id, status: InvitationStatus.PENDING },
+          data: { status: InvitationStatus.EXPIRED },
+        });
+        if (expired.count !== 1) {
+          await this.throwCurrentRegisterInvitationState(tx, invitation.id);
+        }
+      }
+      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+    }
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      this.throwInvitationState(invitation.status, invitation.expiresAt);
+    }
+  }
+
+  private async throwCurrentRegisterInvitationState(
+    tx: Prisma.TransactionClient,
+    invitationId: string,
+  ): Promise<never> {
+    const invitation = await tx.organizationInvitation.findUnique({
+      where: { id: invitationId },
+      select: { status: true, expiresAt: true },
+    });
+
+    if (!invitation) {
+      throw new AuthError(
+        'INVITATION_NOT_FOUND',
+        404,
+        'Invitación no encontrada',
+      );
+    }
+
+    if (
+      invitation.status === InvitationStatus.PENDING &&
+      invitation.expiresAt < new Date()
+    ) {
+      await tx.organizationInvitation.updateMany({
+        where: { id: invitationId, status: InvitationStatus.PENDING },
+        data: { status: InvitationStatus.EXPIRED },
+      });
+      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+    }
+
+    this.throwInvitationState(invitation.status, invitation.expiresAt);
+    throw new AuthError(
+      'INVITATION_NOT_FOUND',
+      404,
+      'Invitación no encontrada',
+    );
+  }
+
+  private throwInvitationState(
+    status: InvitationStatus,
+    expiresAt: Date,
+  ): void {
+    if (status === InvitationStatus.PENDING) {
+      if (expiresAt < new Date()) {
+        throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      }
+      return;
+    }
+
+    if (status === InvitationStatus.ACCEPTED) {
+      throw new AuthError(
+        'INVITATION_ALREADY_ACCEPTED',
+        409,
+        'La invitación ya fue aceptada',
+      );
+    }
+
+    if (status === InvitationStatus.REVOKED) {
+      throw new AuthError(
+        'INVITATION_REVOKED',
+        410,
+        'La invitación fue revocada',
+      );
+    }
+
+    throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+  }
+
+  private async mapUniqueEmailConflict<T>(
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await callback();
+    } catch (error) {
+      if (this.isEmailUniqueError(error)) {
+        throw new AuthError(
+          'EMAIL_ALREADY_REGISTERED',
+          409,
+          'El email ya está registrado',
+        );
+      }
+      throw error;
+    }
+  }
+
+  private isEmailUniqueError(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null || !('code' in error)) {
+      return false;
+    }
+    if ((error as { code?: unknown }).code !== 'P2002') {
+      return false;
+    }
+
+    const target = (error as { meta?: { target?: unknown } }).meta?.target;
+    return Array.isArray(target) && target.includes('email');
   }
 
   private async createSession(

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ApiBody,
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
@@ -41,9 +42,66 @@ export class AuthController {
   }
 
   @Post('register')
-  @ApiOperation({ summary: 'Registrar usuario, organización y sesión' })
+  @ApiOperation({
+    summary: 'Registrar usuario por modo normal o por invitación',
+    description:
+      'Acepta exactamente uno de dos modos: email + organizationName para registro normal, o invitationToken para registro por invitación.',
+  })
+  @ApiBody({
+    schema: {
+      oneOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'email',
+            'password',
+            'firstName',
+            'lastName',
+            'organizationName',
+          ],
+          properties: {
+            email: { type: 'string', format: 'email', example: 'a@b.com' },
+            password: { type: 'string', minLength: 8 },
+            firstName: { type: 'string', example: 'Orlando' },
+            lastName: { type: 'string', example: 'Moreno' },
+            organizationName: { type: 'string', example: 'Acme Corp' },
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['password', 'firstName', 'lastName', 'invitationToken'],
+          properties: {
+            password: { type: 'string', minLength: 8 },
+            firstName: { type: 'string', example: 'Orlando' },
+            lastName: { type: 'string', example: 'Moreno' },
+            invitationToken: {
+              type: 'string',
+              example: 'plain-invitation-token',
+            },
+          },
+        },
+      ],
+    },
+  })
   @ApiResponse({ status: 201, description: 'Usuario registrado' })
-  @ApiResponse({ status: 409, description: 'Email ya registrado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Payload inválido o mezcla de modos de registro',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'INVITATION_NOT_FOUND',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'EMAIL_ALREADY_REGISTERED o INVITATION_ALREADY_ACCEPTED',
+  })
+  @ApiResponse({
+    status: 410,
+    description: 'INVITATION_EXPIRED o INVITATION_REVOKED',
+  })
   async register(
     @Body() dto: RegisterDto,
     @Res({ passthrough: true }) res: Response,

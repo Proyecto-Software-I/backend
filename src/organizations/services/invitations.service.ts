@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import {
   InvitationStatus,
   MembershipStatus,
   Prisma,
 } from '../../generated/prisma/client';
 import { AuthError } from '../../common/exceptions/auth-error';
+import { hashInvitationToken } from '../../organization-provisioning/invitation-token';
 import { OrganizationRolesService } from '../../organization-provisioning/services/organization-roles.service';
 import { SerializableTransactionService } from '../../organization-provisioning/services/serializable-transaction.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -650,6 +651,6 @@ export class InvitationsService {
   }
 
   private hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
+    return hashInvitationToken(token);
   }
 }
