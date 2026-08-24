@@ -19,6 +19,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     SessionService,
     JwtAuthGuard,
   ],
-  exports: [JwtAuthGuard, TokenService],
+  exports: [JwtAuthGuard, TokenService, SessionService],
 })
 export class AuthModule {}

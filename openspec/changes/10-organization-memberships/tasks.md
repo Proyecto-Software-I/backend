@@ -19,7 +19,7 @@
 
 - [x] 3.1 Implement a bounded Serializable transaction retry helper for Prisma `P2034` conflicts with 3 total attempts and no retries for functional errors.
 - [x] 3.2 Ensure each retry creates a new Serializable transaction and never reuses a rolled-back transaction client.
-- [ ] 3.3 Use Serializable transactions for invitation creation, invitation acceptance, register-with-invitation, and last-owner membership mutations.
+- [x] 3.3 Use Serializable transactions for invitation creation, invitation acceptance, register-with-invitation, and last-owner membership mutations.
 - [x] 3.4 Add unit tests for P2034 retry, retry limit, non-P2034 propagation, and functional-error non-retry behavior.
 
 ## 4. Auth Contract Updates
@@ -34,15 +34,15 @@
 
 ## 5. Invitation Services And DTOs
 
-- [ ] 5.1 Create DTOs for invitation creation and invitation-related responses with class-validator and Swagger metadata.
+- [x] 5.1 Create DTOs for invitation creation and invitation-related responses with class-validator and Swagger metadata.
 - [x] 5.2 Implement invitation token generation and SHA-256 hashing using Node crypto or a neutral helper, storing only `tokenHash`.
-- [ ] 5.3 Implement invitation expiration handling that treats stale `PENDING` records as `EXPIRED` and persists expiration opportunistically.
+- [x] 5.3 Implement invitation expiration handling that treats stale `PENDING` records as `EXPIRED` and persists expiration opportunistically.
 - [x] 5.4 Implement `InvitationsService.createInvitation` with a Serializable transaction, bounded P2034 retry, tenant-scoped checks for normalized email, ACTIVE/SUSPENDED/REMOVED membership conflict, duplicate pending invitation, same-tx MEMBER provisioning, 7-day expiry, `invitedByUserId`, `proposedRoleId`, and one-time `acceptanceUrl` return.
 - [x] 5.5 Implement `InvitationsService.listInvitations` for current-tenant listing with safe `invitedBy` and `proposedRole` relation fields and without plaintext tokens, token hashes, or internal relation IDs.
 - [x] 5.6 Implement `InvitationsService.revokeInvitation` using `invitationId + active organizationId` and state-specific contracts for PENDING, ACCEPTED, EXPIRED, REVOKED, missing, and cross-tenant invitations.
 - [x] 5.7 Implement public invitation preview by token hash with safe response fields and functional errors for missing, expired, revoked, and accepted invitations.
 - [x] 5.8 Implement existing-user invitation acceptance with Serializable transaction, bounded P2034 retry, authenticated email match, atomic `PENDING -> ACCEPTED`, same-tx ACTIVE membership creation, same-tx MEMBER assignment, and no automatic organization selection.
-- [ ] 5.9 Add unit tests for invitation create, duplicate pending, expired replacement, revoked, accepted, invalid token, token hashing, email mismatch, replay, existing ACTIVE/SUSPENDED/REMOVED membership rejection, no invitation created for membership conflicts, invitedBy/proposedRole persistence, revocation by state, and cross-tenant invitation not found.
+- [x] 5.9 Add unit tests for invitation create, duplicate pending, expired replacement, revoked, accepted, invalid token, token hashing, email mismatch, replay, existing ACTIVE/SUSPENDED/REMOVED membership rejection, no invitation created for membership conflicts, invitedBy/proposedRole persistence, revocation by state, and cross-tenant invitation not found.
 
 ## 6. Membership Services And Session Tenant Invalidation
 
@@ -58,37 +58,37 @@
 
 - [x] 7.1 Implement `OrganizationsController` for `GET /api/organizations/current/members`, `GET /api/organizations/current/invitations`, `POST /api/organizations/current/invitations`, `DELETE /api/organizations/current/invitations/:invitationId`, `PATCH /api/organizations/current/members/:membershipId`, and `DELETE /api/organizations/current/members/:membershipId`.
 - [x] 7.2 Protect administrative endpoints with `JwtAuthGuard`, `PermissionGuard`, and the required `members.read` or `members.manage` decorators.
-- [ ] 7.3 Implement `InvitationsController` for `GET /api/invitations/:token` without auth and `POST /api/invitations/:token/accept` with `JwtAuthGuard` only.
+- [x] 7.3 Implement `InvitationsController` for `GET /api/invitations/:token` without auth and `POST /api/invitations/:token/accept` with `JwtAuthGuard` only.
 - [x] 7.4 Document all organization and invitation endpoints in Swagger with auth requirements, permission requirements, DTOs, responses, safe invitation list metadata, and functional errors.
 - [x] 7.5 Verify controllers never accept or use body/query/header organization IDs for tenant authorization.
 
 ## 8. E2E Coverage
 
-- [ ] 8.1 Add E2E setup helpers for creating users, organizations, roles, memberships, sessions, and authenticated requests without leaking tokens.
-- [ ] 8.2 Add E2E tests proving OWNER can administer members and MEMBER without `members.manage` receives 403.
-- [ ] 8.3 Add E2E tests proving Org A cannot administer Org B memberships or invitations by ID.
-- [ ] 8.4 Add E2E tests for invitation create, duplicate pending, invalid token, preview PENDING, preview EXPIRED, preview REVOKED, and preview ACCEPTED cases.
-- [ ] 8.5 Add E2E tests for invitation creation conflicts: existing ACTIVE, SUSPENDED, and REMOVED memberships each return `MEMBER_ALREADY_EXISTS` and create no OrganizationInvitation.
-- [ ] 8.6 Add E2E tests for invitation metadata: `invitedBy` is the authenticated user, `proposedRole` is MEMBER, list response includes safe invitedBy/proposedRole fields, and list response excludes internal IDs and tokenHash.
-- [ ] 8.7 Add E2E tests for invitation revocation states: PENDING -> REVOKED, ACCEPTED returns `INVITATION_ALREADY_ACCEPTED`, EXPIRED returns `INVITATION_EXPIRED`, REVOKED returns `INVITATION_REVOKED`, missing invitation returns not found, and cross-tenant invitationId returns not found.
-- [ ] 8.8 Add E2E security tests proving plaintext invitation token is never stored and email mismatch is rejected.
-- [ ] 8.9 Add E2E existing-user flow: invite -> accept -> ACTIVE membership + MEMBER role, without auto-selecting the organization.
-- [ ] 8.10 Add E2E tests proving invitation accept rejects users with existing ACTIVE, SUSPENDED, or REMOVED memberships with `MEMBER_ALREADY_EXISTS` and leaves membership and invitation unchanged.
-- [ ] 8.11 Add E2E new-user flow: invite -> register with invitation -> User + Credential + ACTIVE membership + MEMBER role + active session.
-- [ ] 8.12 Add E2E tests for register with invitation token not found, expired, revoked, and already accepted, proving no partial User/Credential/Membership/Session records are created.
-- [ ] 8.13 Add E2E membership management tests for suspend, reactivate, remove, REMOVED -> ACTIVE returning `MEMBERSHIP_NOT_FOUND`, and cross-tenant membershipId returning not found.
-- [ ] 8.14 Add E2E last-owner tests proving the last active OWNER cannot be suspended or removed.
-- [ ] 8.15 Add E2E session tests proving suspended/removed users lose only the affected active tenant and refresh returns `org: null`.
-- [ ] 8.16 Add E2E Auth contract tests proving `activeMembership.permissions` appears in register, login, select-organization, and `/auth/me`.
-- [ ] 8.17 Add concurrency integration/E2E tests proving concurrent duplicate invitation creation leaves at most one current PENDING, concurrent invitation acceptance consumes the token once, concurrent owner mutations never leave zero active OWNER, P2034 retries are bounded, and retry limit is not infinite.
+- [x] 8.1 Add E2E setup helpers for creating users, organizations, roles, memberships, sessions, and authenticated requests without leaking tokens.
+- [x] 8.2 Add E2E tests proving OWNER can administer members and MEMBER without `members.manage` receives 403.
+- [x] 8.3 Add E2E tests proving Org A cannot administer Org B memberships or invitations by ID.
+- [x] 8.4 Add E2E tests for invitation create, duplicate pending, invalid token, preview PENDING, preview EXPIRED, preview REVOKED, and preview ACCEPTED cases.
+- [x] 8.5 Add E2E tests for invitation creation conflicts: existing ACTIVE, SUSPENDED, and REMOVED memberships each return `MEMBER_ALREADY_EXISTS` and create no OrganizationInvitation.
+- [x] 8.6 Add E2E tests for invitation metadata: `invitedBy` is the authenticated user, `proposedRole` is MEMBER, list response includes safe invitedBy/proposedRole fields, and list response excludes internal IDs and tokenHash.
+- [x] 8.7 Add E2E tests for invitation revocation states: PENDING -> REVOKED, ACCEPTED returns `INVITATION_ALREADY_ACCEPTED`, EXPIRED returns `INVITATION_EXPIRED`, REVOKED returns `INVITATION_REVOKED`, missing invitation returns not found, and cross-tenant invitationId returns not found.
+- [x] 8.8 Add E2E security tests proving plaintext invitation token is never stored and email mismatch is rejected.
+- [x] 8.9 Add E2E existing-user flow: invite -> accept -> ACTIVE membership + MEMBER role, without auto-selecting the organization.
+- [x] 8.10 Add E2E tests proving invitation accept rejects users with existing ACTIVE, SUSPENDED, or REMOVED memberships with `MEMBER_ALREADY_EXISTS` and leaves membership and invitation unchanged.
+- [x] 8.11 Add E2E new-user flow: invite -> register with invitation -> User + Credential + ACTIVE membership + MEMBER role + active session.
+- [x] 8.12 Add E2E tests for register with invitation token not found, expired, revoked, and already accepted, proving no partial User/Credential/Membership/Session records are created.
+- [x] 8.13 Add E2E membership management tests for suspend, reactivate, remove, REMOVED -> ACTIVE returning `MEMBERSHIP_NOT_FOUND`, and cross-tenant membershipId returning not found.
+- [x] 8.14 Add E2E last-owner tests proving the last active OWNER cannot be suspended or removed.
+- [x] 8.15 Add E2E session tests proving suspended/removed users lose only the affected active tenant and refresh returns `org: null`.
+- [x] 8.16 Add E2E Auth contract tests proving `activeMembership.permissions` appears in register, login, select-organization, and `/auth/me`.
+- [x] 8.17 Add concurrency integration/E2E tests proving concurrent duplicate invitation creation leaves at most one current PENDING, concurrent invitation acceptance consumes the token once, concurrent owner mutations never leave zero active OWNER, P2034 retries are bounded, and retry limit is not infinite.
 
 ## 9. Final Verification
 
-- [ ] 9.1 Confirm no changes were made to `prisma/schema/*.prisma`, `prisma/migrations/*`, or `src/generated/prisma`.
-- [ ] 9.2 Run `npm run prisma:validate`.
-- [ ] 9.3 Run `npm run prisma:generate`.
-- [ ] 9.4 Run `npm run lint`.
-- [ ] 9.5 Run `npm run test`.
-- [ ] 9.6 Run `npm run db:ensure`, `npm run db:deploy`, `npm run db:seed`, and `npm run test:e2e` when local PostgreSQL is available.
-- [ ] 9.7 Run `npm run build`.
-- [ ] 9.8 Run `npm run check`.
+- [x] 9.1 Confirm no changes were made to `prisma/schema/*.prisma`, `prisma/migrations/*`, or `src/generated/prisma`.
+- [x] 9.2 Run `npm run prisma:validate`.
+- [x] 9.3 Run `npm run prisma:generate`.
+- [x] 9.4 Run `npm run lint`.
+- [x] 9.5 Run `npm run test`.
+- [x] 9.6 Run `npm run db:ensure`, `npm run db:deploy`, `npm run db:seed`, and `npm run test:e2e` when local PostgreSQL is available.
+- [x] 9.7 Run `npm run build`.
+- [x] 9.8 Run `npm run check`.
