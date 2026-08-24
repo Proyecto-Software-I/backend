@@ -11,6 +11,11 @@ import {
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthError } from '../common/exceptions/auth-error';
+import {
+  getInvitationEffectiveState,
+  getInvitationStateError,
+  throwInvitationStateError,
+} from '../organization-provisioning/invitation-state';
 import { hashInvitationToken } from '../organization-provisioning/invitation-token';
 import { OrganizationRolesService } from '../organization-provisioning/services/organization-roles.service';
 import { SerializableTransactionService } from '../organization-provisioning/services/serializable-transaction.service';
@@ -249,7 +254,15 @@ export class AuthService {
     );
 
     if (result.kind === 'expired') {
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      const error = getInvitationStateError(
+        InvitationStatus.EXPIRED,
+        new Date(0),
+        new Date(),
+      );
+      if (error) {
+        throw error;
+      }
+      throw new Error('Expected expired invitation state error');
     }
 
     const memberships = await this.getMembershipViews(result.user.id);
@@ -322,7 +335,7 @@ export class AuthService {
     });
 
     if (accepted.count !== 1) {
-      await this.throwCurrentRegisterInvitationState(tx, invitation.id);
+      await this.throwCurrentRegisterInvitationState(tx, invitation.id, now);
     }
 
     const user = await tx.user.create({
@@ -556,26 +569,30 @@ export class AuthService {
     },
     now: Date,
   ): Promise<{ kind: 'usable' } | { kind: 'expired' }> {
-    if (
-      invitation.status === InvitationStatus.EXPIRED ||
-      invitation.expiresAt < now
-    ) {
+    const effectiveState = getInvitationEffectiveState(
+      invitation.status,
+      invitation.expiresAt,
+      now,
+    );
+    if (effectiveState === 'EXPIRED') {
       if (invitation.status === InvitationStatus.PENDING) {
         const expired = await tx.organizationInvitation.updateMany({
           where: { id: invitation.id, status: InvitationStatus.PENDING },
           data: { status: InvitationStatus.EXPIRED },
         });
         if (expired.count !== 1) {
-          await this.throwCurrentRegisterInvitationState(tx, invitation.id);
+          await this.throwCurrentRegisterInvitationState(
+            tx,
+            invitation.id,
+            now,
+          );
         }
         return { kind: 'expired' };
       }
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      throwInvitationStateError(invitation.status, invitation.expiresAt, now);
     }
 
-    if (invitation.status !== InvitationStatus.PENDING) {
-      this.throwInvitationState(invitation.status, invitation.expiresAt);
-    }
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
 
     return { kind: 'usable' };
   }
@@ -583,6 +600,7 @@ export class AuthService {
   private async throwCurrentRegisterInvitationState(
     tx: Prisma.TransactionClient,
     invitationId: string,
+    now: Date,
   ): Promise<never> {
     const invitation = await tx.organizationInvitation.findUnique({
       where: { id: invitationId },
@@ -597,42 +615,12 @@ export class AuthService {
       );
     }
 
-    this.throwInvitationState(invitation.status, invitation.expiresAt);
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
     throw new AuthError(
       'INVITATION_NOT_FOUND',
       404,
       'Invitación no encontrada',
     );
-  }
-
-  private throwInvitationState(
-    status: InvitationStatus,
-    expiresAt: Date,
-  ): void {
-    if (status === InvitationStatus.PENDING) {
-      if (expiresAt < new Date()) {
-        throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
-      }
-      return;
-    }
-
-    if (status === InvitationStatus.ACCEPTED) {
-      throw new AuthError(
-        'INVITATION_ALREADY_ACCEPTED',
-        409,
-        'La invitación ya fue aceptada',
-      );
-    }
-
-    if (status === InvitationStatus.REVOKED) {
-      throw new AuthError(
-        'INVITATION_REVOKED',
-        410,
-        'La invitación fue revocada',
-      );
-    }
-
-    throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
   }
 
   private async mapUniqueEmailConflict<T>(

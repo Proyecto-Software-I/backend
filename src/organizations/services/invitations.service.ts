@@ -6,6 +6,11 @@ import {
   Prisma,
 } from '../../generated/prisma/client';
 import { AuthError } from '../../common/exceptions/auth-error';
+import {
+  getInvitationEffectiveState,
+  getInvitationStateError,
+  throwInvitationStateError,
+} from '../../organization-provisioning/invitation-state';
 import { hashInvitationToken } from '../../organization-provisioning/invitation-token';
 import { OrganizationRolesService } from '../../organization-provisioning/services/organization-roles.service';
 import { SerializableTransactionService } from '../../organization-provisioning/services/serializable-transaction.service';
@@ -161,7 +166,15 @@ export class InvitationsService {
     );
 
     if (result.kind === 'expired') {
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      const error = getInvitationStateError(
+        InvitationStatus.EXPIRED,
+        new Date(0),
+        new Date(),
+      );
+      if (error) {
+        throw error;
+      }
+      throw new Error('Expected expired invitation state error');
     }
 
     return { invitation: result.invitation };
@@ -189,26 +202,12 @@ export class InvitationsService {
       );
     }
 
-    if (invitation.status === InvitationStatus.ACCEPTED) {
-      throw new AuthError(
-        'INVITATION_ALREADY_ACCEPTED',
-        409,
-        'La invitación ya fue aceptada',
-      );
-    }
-
-    if (invitation.status === InvitationStatus.REVOKED) {
-      throw new AuthError(
-        'INVITATION_REVOKED',
-        410,
-        'La invitación fue revocada',
-      );
-    }
-
-    if (
-      invitation.status === InvitationStatus.EXPIRED ||
-      invitation.expiresAt < now
-    ) {
+    const effectiveState = getInvitationEffectiveState(
+      invitation.status,
+      invitation.expiresAt,
+      now,
+    );
+    if (effectiveState === 'EXPIRED') {
       if (invitation.status === InvitationStatus.PENDING) {
         await this.prisma.organizationInvitation.updateMany({
           where: {
@@ -219,7 +218,17 @@ export class InvitationsService {
           data: { status: InvitationStatus.EXPIRED },
         });
       }
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      throwInvitationStateError(invitation.status, invitation.expiresAt, now);
+    }
+
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
+
+    if (effectiveState !== 'PENDING') {
+      throw new AuthError(
+        'INVITATION_NOT_FOUND',
+        404,
+        'Invitación no encontrada',
+      );
     }
 
     const revokedCount = await this.prisma.organizationInvitation.updateMany({
@@ -232,7 +241,7 @@ export class InvitationsService {
     });
 
     if (revokedCount.count !== 1) {
-      await this.throwCurrentRevokeState(organizationId, invitationId);
+      await this.throwCurrentRevokeState(organizationId, invitationId, now);
     }
 
     const revoked = await this.prisma.organizationInvitation.findFirstOrThrow({
@@ -246,8 +255,8 @@ export class InvitationsService {
   private async throwCurrentRevokeState(
     organizationId: string,
     invitationId: string,
+    now: Date,
   ): Promise<never> {
-    const now = new Date();
     const invitation = await this.prisma.organizationInvitation.findFirst({
       where: { id: invitationId, organizationId },
       select: { status: true, expiresAt: true },
@@ -261,26 +270,12 @@ export class InvitationsService {
       );
     }
 
-    if (invitation.status === InvitationStatus.ACCEPTED) {
-      throw new AuthError(
-        'INVITATION_ALREADY_ACCEPTED',
-        409,
-        'La invitación ya fue aceptada',
-      );
-    }
-
-    if (invitation.status === InvitationStatus.REVOKED) {
-      throw new AuthError(
-        'INVITATION_REVOKED',
-        410,
-        'La invitación fue revocada',
-      );
-    }
-
-    if (
-      invitation.status === InvitationStatus.EXPIRED ||
-      invitation.expiresAt < now
-    ) {
+    const effectiveState = getInvitationEffectiveState(
+      invitation.status,
+      invitation.expiresAt,
+      now,
+    );
+    if (effectiveState === 'EXPIRED') {
       if (invitation.status === InvitationStatus.PENDING) {
         await this.prisma.organizationInvitation.updateMany({
           where: {
@@ -291,8 +286,10 @@ export class InvitationsService {
           data: { status: InvitationStatus.EXPIRED },
         });
       }
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      throwInvitationStateError(invitation.status, invitation.expiresAt, now);
     }
+
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
 
     throw new AuthError(
       'INVITATION_NOT_FOUND',
@@ -314,26 +311,12 @@ export class InvitationsService {
   }> {
     const now = new Date();
 
-    if (invitation.status === InvitationStatus.ACCEPTED) {
-      throw new AuthError(
-        'INVITATION_ALREADY_ACCEPTED',
-        409,
-        'La invitación ya fue aceptada',
-      );
-    }
-
-    if (invitation.status === InvitationStatus.REVOKED) {
-      throw new AuthError(
-        'INVITATION_REVOKED',
-        410,
-        'La invitación fue revocada',
-      );
-    }
-
-    if (
-      invitation.status === InvitationStatus.EXPIRED ||
-      invitation.expiresAt < now
-    ) {
+    const effectiveState = getInvitationEffectiveState(
+      invitation.status,
+      invitation.expiresAt,
+      now,
+    );
+    if (effectiveState === 'EXPIRED') {
       if (invitation.status === InvitationStatus.PENDING) {
         const expired = await this.prisma.organizationInvitation.updateMany({
           where: {
@@ -343,11 +326,13 @@ export class InvitationsService {
           data: { status: InvitationStatus.EXPIRED },
         });
         if (expired.count !== 1) {
-          return this.resolveCurrentPreviewState(invitation.id);
+          return this.resolveCurrentPreviewState(invitation.id, now);
         }
       }
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      throwInvitationStateError(invitation.status, invitation.expiresAt, now);
     }
+
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
 
     return {
       email: invitation.email,
@@ -356,7 +341,10 @@ export class InvitationsService {
     };
   }
 
-  private async resolveCurrentPreviewState(invitationId: string): Promise<{
+  private async resolveCurrentPreviewState(
+    invitationId: string,
+    now: Date,
+  ): Promise<{
     email: string;
     expiresAt: Date;
     organization: { name: string; slug: string };
@@ -374,13 +362,7 @@ export class InvitationsService {
       );
     }
 
-    if (invitation.status !== InvitationStatus.PENDING) {
-      this.throwInvitationState(invitation.status, invitation.expiresAt);
-    }
-
-    if (invitation.expiresAt < new Date()) {
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
-    }
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
 
     return {
       email: invitation.email,
@@ -464,7 +446,7 @@ export class InvitationsService {
     });
 
     if (accepted.count !== 1) {
-      await this.throwCurrentAcceptState(tx, invitation.id);
+      await this.throwCurrentAcceptState(tx, invitation.id, now);
     }
 
     const membership = await tx.organizationMembership.create({
@@ -499,26 +481,26 @@ export class InvitationsService {
     },
     now: Date,
   ): Promise<{ kind: 'usable' } | { kind: 'expired' }> {
-    if (
-      invitation.status === InvitationStatus.EXPIRED ||
-      invitation.expiresAt < now
-    ) {
+    const effectiveState = getInvitationEffectiveState(
+      invitation.status,
+      invitation.expiresAt,
+      now,
+    );
+    if (effectiveState === 'EXPIRED') {
       if (invitation.status === InvitationStatus.PENDING) {
         const expired = await tx.organizationInvitation.updateMany({
           where: { id: invitation.id, status: InvitationStatus.PENDING },
           data: { status: InvitationStatus.EXPIRED },
         });
         if (expired.count !== 1) {
-          await this.throwCurrentAcceptState(tx, invitation.id);
+          await this.throwCurrentAcceptState(tx, invitation.id, now);
         }
         return { kind: 'expired' };
       }
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+      throwInvitationStateError(invitation.status, invitation.expiresAt, now);
     }
 
-    if (invitation.status !== InvitationStatus.PENDING) {
-      this.throwInvitationState(invitation.status, invitation.expiresAt);
-    }
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
 
     return { kind: 'usable' };
   }
@@ -526,6 +508,7 @@ export class InvitationsService {
   private async throwCurrentAcceptState(
     tx: Prisma.TransactionClient,
     invitationId: string,
+    now: Date,
   ): Promise<never> {
     const invitation = await tx.organizationInvitation.findUnique({
       where: { id: invitationId },
@@ -540,42 +523,12 @@ export class InvitationsService {
       );
     }
 
-    this.throwInvitationState(invitation.status, invitation.expiresAt);
+    throwInvitationStateError(invitation.status, invitation.expiresAt, now);
     throw new AuthError(
       'INVITATION_NOT_FOUND',
       404,
       'Invitación no encontrada',
     );
-  }
-
-  private throwInvitationState(
-    status: InvitationStatus,
-    expiresAt: Date,
-  ): void {
-    if (status === InvitationStatus.PENDING) {
-      if (expiresAt < new Date()) {
-        throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
-      }
-      return;
-    }
-
-    if (status === InvitationStatus.ACCEPTED) {
-      throw new AuthError(
-        'INVITATION_ALREADY_ACCEPTED',
-        409,
-        'La invitación ya fue aceptada',
-      );
-    }
-
-    if (status === InvitationStatus.REVOKED) {
-      throw new AuthError(
-        'INVITATION_REVOKED',
-        410,
-        'La invitación fue revocada',
-      );
-    }
-
-    throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
   }
 
   private async createInvitationInTransaction(

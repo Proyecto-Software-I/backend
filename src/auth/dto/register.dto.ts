@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
   IsNotEmpty,
-  IsOptional,
   IsString,
   MinLength,
   Validate,
@@ -70,6 +69,5 @@ export class RegisterDto {
   )
   @IsString()
   @IsNotEmpty()
-  @IsOptional()
   invitationToken?: string;
 }

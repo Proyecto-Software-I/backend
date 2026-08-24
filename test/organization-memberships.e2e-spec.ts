@@ -960,6 +960,35 @@ describe('Organization memberships and invitations (e2e)', () => {
     }
   });
 
+  it('rejects null invitationToken at DTO validation without creating records', async () => {
+    const countsBefore = {
+      users: await prisma.user.count(),
+      memberships: await prisma.organizationMembership.count(),
+      sessions: await prisma.userSession.count(),
+    };
+
+    await request(server())
+      .post('/api/auth/register')
+      .send({
+        invitationToken: null,
+        password,
+        firstName: 'Null',
+        lastName: 'Token',
+      })
+      .expect(400)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expect(body.code).toBe('VALIDATION_ERROR');
+      });
+
+    await expect(prisma.user.count()).resolves.toBe(countsBefore.users);
+    await expect(prisma.organizationMembership.count()).resolves.toBe(
+      countsBefore.memberships,
+    );
+    await expect(prisma.userSession.count()).resolves.toBe(
+      countsBefore.sessions,
+    );
+  });
+
   it('rolls back PostgreSQL transaction when invitation registration fails after claim', async () => {
     const owner = await registerOwner('rollback-owner');
     const created = await createInvitation(owner, email('rollback-invited'));

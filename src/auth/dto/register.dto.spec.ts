@@ -19,15 +19,30 @@ describe('RegisterDto', () => {
     ).resolves.toHaveLength(0);
   });
 
-  it('accepts invitation mode', async () => {
+  it('accepts invitation mode with a non-empty string token', async () => {
     await expect(
       validateDto({
         password: 'SecurePassword123!',
         firstName: 'Orlando',
         lastName: 'Moreno',
-        invitationToken: 'plain-token',
+        invitationToken: 'valid-token',
       }),
     ).resolves.toHaveLength(0);
+  });
+
+  it.each([
+    ['null invitationToken', null],
+    ['empty invitationToken', ''],
+    ['numeric invitationToken', 123],
+  ])('rejects invitation mode with %s', async (_name, invitationToken) => {
+    const errors = await validateDto({
+      password: 'SecurePassword123!',
+      firstName: 'Orlando',
+      lastName: 'Moreno',
+      invitationToken,
+    });
+
+    expect(errors.length).toBeGreaterThan(0);
   });
 
   it.each([
