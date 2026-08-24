@@ -1,10 +1,4 @@
-# auth Specification
-
-## Purpose
-
-Provee autenticación y resolución del tenant activo para LegacyLift, respetando el modelo multi-tenant (`User → OrganizationMembership → Organization → Role`) ya definido en Prisma, mediante los endpoints de registro, login, sesión, selección de organización, refresh y logout.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Registration creates user, organization and active session
 El sistema SHALL soportar dos modos mutuamente excluyentes en `POST /api/auth/register`: registro normal y registro por invitación. En modo normal, el sistema SHALL crear, en una única transacción Prisma, un `User` (estado `ACTIVE`, `emailVerifiedAt` nulo, `displayName` = `firstName + lastName`), su `UserCredential` con el password hasheado, una `Organization` (estado `TRIAL`, `deploymentMode` `SAAS`, slug generado desde `organizationName` con unicidad garantizada), una `OrganizationMembership` (`ACTIVE`, `joinedAt` = now), un rol `OWNER` (`scope` `ORGANIZATION`, `key` `OWNER`, `isSystem` `true`) con todos los permisos sembrados, un rol `MEMBER` (`scope` `ORGANIZATION`, `key` `MEMBER`, `isSystem` `true`) con `organization.read` y `members.read`, el vínculo `MembershipRole` del usuario al rol `OWNER`, y una `UserSession` con `organizationId` = la organización creada. En modo invitación, el sistema SHALL recibir `password`, `firstName`, `lastName` e `invitationToken`, obtener el email desde una invitación válida, no aceptar `email` ni `organizationName`, no crear una nueva `Organization`, crear `User`, `UserCredential`, `OrganizationMembership ACTIVE`, asignar el rol `MEMBER`, marcar la invitación `ACCEPTED`, y crear una `UserSession` con `organizationId` = la organización de la invitación. El modo invitación SHALL ejecutar todo el aggregate operation dentro de una transacción Serializable con retry acotado ante `P2034`; cualquier provisioning compartido SHALL usar el mismo `Prisma.TransactionClient` de esa transacción. Si el token de invitación no existe o no es usable, la operación SHALL fallar atómicamente sin crear parcialmente `User`, `UserCredential`, `OrganizationMembership`, `MembershipRole` ni `UserSession`. El email SHALL normalizarse a minúsculas antes de persistir y consultar.
@@ -80,53 +74,6 @@ El sistema SHALL, para un usuario con exactamente una `OrganizationMembership` `
 - **WHEN** se envía `POST /api/auth/login`
 - **THEN** la respuesta trae `activeOrganization` no nulo, `activeMembership.permissions` poblado desde base de datos, `requiresOrganizationSelection` `false` y la sesión queda con organizationId fijado
 
-### Requirement: Login with multiple active organizations requires explicit selection
-El sistema SHALL, para un usuario con dos o más `OrganizationMembership` `ACTIVE`, crear la `UserSession` con `organizationId` nulo y responder con `activeOrganization: null`, `activeMembership: null` y `requiresOrganizationSelection: true`, sin elegir organización arbitrariamente.
-
-#### Scenario: Login with multiple active memberships
-- **WHEN** el usuario tiene dos o más membresías ACTIVE
-- **THEN** la respuesta trae `activeOrganization` nulo, `requiresOrganizationSelection` `true` y la sesión queda con organizationId nulo
-
-### Requirement: Login rejects users without an active membership
-El sistema SHALL rechazar el login con `401` y código `NO_ACTIVE_MEMBERSHIP` cuando las credenciales sean válidas pero el usuario no tenga ninguna `OrganizationMembership` `ACTIVE`, sin crear sesión tenant-scoped.
-
-#### Scenario: Login with no active membership
-- **WHEN** las credenciales son válidas pero no existe membresía ACTIVE
-- **THEN** el sistema responde `401` con código `NO_ACTIVE_MEMBERSHIP` y no crea UserSession con organizationId
-
-### Requirement: Login rejects invalid credentials without differentiation
-El sistema SHALL responder `401` con código `INVALID_CREDENTIALS` tanto para email inexistente como para password incorrecto, sin revelar cuál de los dos falló.
-
-#### Scenario: Unknown email
-- **WHEN** se envía `POST /api/auth/login` con un email no registrado
-- **THEN** el sistema responde `401` con código `INVALID_CREDENTIALS`
-
-#### Scenario: Wrong password
-- **WHEN** se envía `POST /api/auth/login` con email válido y password incorrecto
-- **THEN** el sistema responde `401` con código `INVALID_CREDENTIALS` (idéntico al caso de email inexistente)
-
-### Requirement: Login rejects users who are not active
-El sistema SHALL rechazar el login con `401` y código `USER_NOT_ACTIVE` cuando el `User` no tiene estado `ACTIVE`, aunque las credenciales hasheadas coincidan.
-
-#### Scenario: Non-active user
-- **WHEN** se autentica un usuario con estado distinto de ACTIVE
-- **THEN** el sistema responde `401` con código `USER_NOT_ACTIVE`
-
-### Requirement: Organization selection validates active membership ownership
-El endpoint `POST /api/auth/select-organization` SHALL requerir autenticación y verificar que el `organizationId` solicitado corresponda a una `OrganizationMembership` `ACTIVE` del usuario autenticado; en caso válido SHALL actualizar `UserSession.organizationId`, emitir un nuevo access token con el tenant activo, y responder con `activeMembership.roles` y `activeMembership.permissions` derivados de base de datos y `requiresOrganizationSelection: false`.
-
-#### Scenario: Valid selection
-- **GIVEN** un usuario autenticado tiene una membresía ACTIVE en la organización solicitada
-- **WHEN** el usuario envía `POST /api/auth/select-organization` con esa organización
-- **THEN** la sesión queda con organizationId fijado, se emite nuevo access token y la respuesta trae `activeOrganization` poblado, `activeMembership.permissions` poblado desde base de datos y `requiresOrganizationSelection` `false`
-
-### Requirement: Organization selection rejects organizations the user does not belong to
-El sistema SHALL responder `403` con código `ORGANIZATION_ACCESS_DENIED` si el `organizationId` no es una membresía ACTIVE del usuario, sin confiar en el UUID recibido.
-
-#### Scenario: Foreign organization
-- **WHEN** un usuario autenticado envía un organizationId que no le pertenece o no tiene membresía ACTIVE
-- **THEN** el sistema responde `403` con código `ORGANIZATION_ACCESS_DENIED`
-
 ### Requirement: Current session reflects active organization and membership
 El endpoint `GET /api/auth/me` SHALL devolver, para un Bearer token válido, `user`, `activeOrganization`, `activeMembership`, `memberships` y `requiresOrganizationSelection`. Cuando exista tenant activo, `activeMembership` SHALL incluir `roles` y `permissions` derivados de base de datos. Si la sesión existe sin organización (proceso de selección), SHALL devolver `activeOrganization: null`, `activeMembership: null` y `requiresOrganizationSelection: true`. Nunca SHALL devolver hashes de password, refresh, invitation tokens ni secrets.
 
@@ -139,6 +86,14 @@ El endpoint `GET /api/auth/me` SHALL devolver, para un Bearer token válido, `us
 - **GIVEN** una sesión autenticada válida no tiene organizationId activo
 - **WHEN** se consulta `GET /api/auth/me` con el Bearer token de esa sesión
 - **THEN** la respuesta trae activeOrganization nulo, activeMembership nulo y `requiresOrganizationSelection` `true`
+
+### Requirement: Organization selection validates active membership ownership
+El endpoint `POST /api/auth/select-organization` SHALL requerir autenticación y verificar que el `organizationId` solicitado corresponda a una `OrganizationMembership` `ACTIVE` del usuario autenticado; en caso válido SHALL actualizar `UserSession.organizationId`, emitir un nuevo access token con el tenant activo, y responder con `activeMembership.roles` y `activeMembership.permissions` derivados de base de datos y `requiresOrganizationSelection: false`.
+
+#### Scenario: Valid selection
+- **GIVEN** un usuario autenticado tiene una membresía ACTIVE en la organización solicitada
+- **WHEN** el usuario envía `POST /api/auth/select-organization` con esa organización
+- **THEN** la sesión queda con organizationId fijado, se emite nuevo access token y la respuesta trae `activeOrganization` poblado, `activeMembership.permissions` poblado desde base de datos y `requiresOrganizationSelection` `false`
 
 ### Requirement: Access token is a JWT carrying subject, session and tenant
 El sistema SHALL emitir access tokens como JWT con payload `{ sub: userId, sid: sessionId, org: organizationId | null }`, duración por defecto 15 minutos, sin roles ni permisos en el payload. `org` SHALL ser `null` únicamente durante el flujo excepcional de selección múltiple no resuelta o después de que una membresía suspendida/removida haya dejado a la sesión sin tenant activo.
@@ -160,13 +115,6 @@ El endpoint `POST /api/auth/refresh` SHALL leer el refresh token desde la cookie
 - **GIVEN** la sesión de un usuario tenía organizationId activo y luego su membership fue suspendida o removida, dejando `UserSession.organizationId` en null
 - **WHEN** se envía `POST /api/auth/refresh` con cookie válida de esa sesión
 - **THEN** el sistema responde con un nuevo access token cuyo payload contiene `org: null`
-
-### Requirement: Logout revokes the session and invalidates the refresh token
-El endpoint `POST /api/auth/logout` SHALL, para un usuario autenticado, asignar `UserSession.revokedAt`, invalidar el refresh token y eliminar la cookie `legacylift_refresh`, respondiendo `204 No Content`.
-
-#### Scenario: Logout
-- **WHEN** se envía `POST /api/auth/logout` autenticado
-- **THEN** la sesión queda revocada, la cookie se elimina y el sistema responde `204`
 
 ### Requirement: Errors follow the standardized error contract
 El sistema SHALL responder errores con cuerpo `{ statusCode, code, message }` y los códigos `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`, `USER_NOT_ACTIVE`, `NO_ACTIVE_MEMBERSHIP`, `ORGANIZATION_ACCESS_DENIED`, `SESSION_EXPIRED`, `SESSION_REVOKED`, `VALIDATION_ERROR`, `INVITATION_NOT_FOUND`, `INVITATION_EXPIRED`, `INVITATION_REVOKED`, `INVITATION_ALREADY_ACCEPTED` e `INVITATION_EMAIL_MISMATCH`. Los códigos de validación SHALL usar `400`, credenciales/sesión `401`, autorización `403`, no encontrado `404`, expirado/revocado `410` y conflicto `409`.
@@ -203,13 +151,6 @@ Para cualquier request tenant-scoped, el sistema SHALL resolver el contexto demo
 - **GIVEN** un request autenticado llega a un endpoint que requiere un permiso
 - **WHEN** el sistema evalúa la autorización
 - **THEN** resuelve los permisos desde MembershipRole, RolePermission y Permission en la base de datos actual y no desde el JWT
-
-### Requirement: Authentication requires AUTH_* environment configuration
-El sistema SHALL requerir las variables `AUTH_JWT_SECRET`, `AUTH_ACCESS_TOKEN_TTL` (defecto `15m`) y `AUTH_REFRESH_TOKEN_TTL_DAYS` (defecto `30`), declaradas en `.env.example` y validadas por el `ConfigModule`. El bootstrap SHALL fallar si `AUTH_JWT_SECRET` no está presente.
-
-#### Scenario: Missing JWT secret at bootstrap
-- **WHEN** la aplicación arranca sin `AUTH_JWT_SECRET`
-- **THEN** el `ConfigModule` rechaza la configuración y el arranque falla
 
 ### Requirement: Endpoints are documented in Swagger
 El sistema SHALL documentar en Swagger/OpenAPI los endpoints existentes de auth (`register`, `login`, `me`, `select-organization`, `refresh`, `logout`), el modo normal y el modo invitation de `register`, sus DTOs, códigos de error y contratos de respuesta, incluyendo `activeMembership.permissions`, coherentes con el contrato de la issue #10.
