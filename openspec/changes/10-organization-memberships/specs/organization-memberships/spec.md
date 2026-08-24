@@ -23,12 +23,12 @@ The system SHALL require authenticated requests to member and invitation adminis
 - **THEN** the system responds `403` with code `TENANT_REQUIRED`
 
 ### Requirement: Member list exposes current tenant members
-The system SHALL expose `GET /api/organizations/current/members` for authenticated users with `members.read`. The response SHALL include only memberships whose `organizationId` equals the active tenant from `UserSession.organizationId`; it SHALL include member identity, membership status, joined timestamp, and role keys, and SHALL NOT include password hashes, session tokens, refresh tokens, invitation token hashes, or data from other tenants.
+The system SHALL expose `GET /api/organizations/current/members` for authenticated users with `members.read`. The response SHALL include only memberships whose `organizationId` equals the active tenant from `UserSession.organizationId`; it SHALL include member `id`, `status`, `joinedAt`, `jobTitle`, nested `user`, and `roles`. Each member `user` object SHALL include `id`, `email`, `displayName`, `firstName`, `lastName`, and `avatarUrl`. `jobTitle` SHALL be the current organization membership job title and SHALL NOT be nested inside `user`. The response SHALL NOT include password hashes, session tokens, refresh tokens, invitation token hashes, or data from other tenants.
 
 #### Scenario: List current organization members
 - **GIVEN** an authenticated user has an active tenant and `members.read`
 - **WHEN** the user sends `GET /api/organizations/current/members`
-- **THEN** the system responds `200 OK` with only members of the active organization
+- **THEN** the system responds `200 OK` with only members of the active organization and includes member-level `jobTitle` plus `user.displayName`, `user.firstName`, `user.lastName`, and `user.avatarUrl`
 
 #### Scenario: Member list denies missing permission
 - **GIVEN** an authenticated user has an active tenant but lacks `members.read`

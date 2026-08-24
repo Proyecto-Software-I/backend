@@ -20,8 +20,10 @@ const TARGET_MEMBERSHIP_INCLUDE = {
     select: {
       id: true,
       email: true,
+      displayName: true,
       firstName: true,
       lastName: true,
+      avatarUrl: true,
     },
   },
   roles: {
@@ -49,8 +51,10 @@ export class MembershipsService {
           select: {
             id: true,
             email: true,
+            displayName: true,
             firstName: true,
             lastName: true,
+            avatarUrl: true,
           },
         },
         roles: {
@@ -66,6 +70,7 @@ export class MembershipsService {
         id: membership.id,
         status: membership.status,
         joinedAt: membership.joinedAt,
+        jobTitle: membership.jobTitle,
         user: membership.user,
         roles: membership.roles.map(
           (membershipRole) => membershipRole.role.key,
@@ -259,6 +264,7 @@ export class MembershipsService {
       id: membership.id,
       status: membership.status,
       joinedAt: membership.joinedAt,
+      jobTitle: membership.jobTitle,
       user: membership.user,
       roles: membership.roles.map((membershipRole) => membershipRole.role.key),
     };

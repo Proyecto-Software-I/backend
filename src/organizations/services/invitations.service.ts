@@ -66,6 +66,10 @@ const ACCEPT_INVITATION_SELECT = {
   organizationId: true,
 } satisfies Prisma.OrganizationInvitationSelect;
 
+type AcceptInvitationTransactionResult =
+  | { kind: 'accepted'; invitation: OrganizationInvitationDto }
+  | { kind: 'expired' };
+
 @Injectable()
 export class InvitationsService {
   constructor(
@@ -152,11 +156,15 @@ export class InvitationsService {
   ): Promise<OrganizationInvitationResponseDto> {
     const tokenHash = this.hashToken(token);
 
-    const invitation = await this.serializableTransactionService.run((tx) =>
+    const result = await this.serializableTransactionService.run((tx) =>
       this.acceptInvitationInTransaction(tx, tokenHash, authenticatedUserId),
     );
 
-    return { invitation };
+    if (result.kind === 'expired') {
+      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+    }
+
+    return { invitation: result.invitation };
   }
 
   async revokeInvitation(
@@ -385,7 +393,7 @@ export class InvitationsService {
     tx: Prisma.TransactionClient,
     tokenHash: string,
     authenticatedUserId: string,
-  ): Promise<OrganizationInvitationDto> {
+  ): Promise<AcceptInvitationTransactionResult> {
     const now = new Date();
     const invitation = await tx.organizationInvitation.findUnique({
       where: { tokenHash },
@@ -400,7 +408,14 @@ export class InvitationsService {
       );
     }
 
-    await this.ensureAcceptableInTransaction(tx, invitation, now);
+    const usable = await this.ensureAcceptableInTransaction(
+      tx,
+      invitation,
+      now,
+    );
+    if (usable.kind === 'expired') {
+      return usable;
+    }
 
     const user = await tx.user.findUniqueOrThrow({
       where: { id: authenticatedUserId },
@@ -467,10 +482,12 @@ export class InvitationsService {
       memberRole.id,
     );
 
-    return tx.organizationInvitation.findUniqueOrThrow({
-      where: { id: invitation.id },
-      select: SAFE_INVITATION_SELECT,
-    });
+    const acceptedInvitation =
+      await tx.organizationInvitation.findUniqueOrThrow({
+        where: { id: invitation.id },
+        select: SAFE_INVITATION_SELECT,
+      });
+    return { kind: 'accepted', invitation: acceptedInvitation };
   }
 
   private async ensureAcceptableInTransaction(
@@ -481,7 +498,7 @@ export class InvitationsService {
       expiresAt: Date;
     },
     now: Date,
-  ): Promise<void> {
+  ): Promise<{ kind: 'usable' } | { kind: 'expired' }> {
     if (
       invitation.status === InvitationStatus.EXPIRED ||
       invitation.expiresAt < now
@@ -494,6 +511,7 @@ export class InvitationsService {
         if (expired.count !== 1) {
           await this.throwCurrentAcceptState(tx, invitation.id);
         }
+        return { kind: 'expired' };
       }
       throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
     }
@@ -501,6 +519,8 @@ export class InvitationsService {
     if (invitation.status !== InvitationStatus.PENDING) {
       this.throwInvitationState(invitation.status, invitation.expiresAt);
     }
+
+    return { kind: 'usable' };
   }
 
   private async throwCurrentAcceptState(

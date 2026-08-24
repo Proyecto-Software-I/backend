@@ -594,8 +594,16 @@ describe('InvitationsService accept', () => {
     });
   });
 
-  it('expires stale pending invitation in the same tx and rejects accept', async () => {
-    const { service, tx } = makeService();
+  it('commits stale pending expiration before rejecting accept', async () => {
+    const { service, tx, serializableTransactionService } = makeService();
+    const transactionResults: unknown[] = [];
+    serializableTransactionService.run.mockImplementationOnce(
+      async (callback: (transactionClient: typeof tx) => Promise<unknown>) => {
+        const result = await callback(tx);
+        transactionResults.push(result);
+        return result;
+      },
+    );
     tx.organizationInvitation.findUnique.mockResolvedValue(
       acceptInvitation({ expiresAt: new Date(Date.now() - 60_000) }),
     );
@@ -611,6 +619,9 @@ describe('InvitationsService accept', () => {
       where: { id: 'invitation-1', status: InvitationStatus.PENDING },
       data: { status: InvitationStatus.EXPIRED },
     });
+    expect(transactionResults).toEqual([{ kind: 'expired' }]);
+    expect(tx.user.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(tx.organizationMembership.create).not.toHaveBeenCalled();
   });
 
   it.each([

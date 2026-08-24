@@ -21,10 +21,16 @@ export class OrganizationMemberUserDto {
   email!: string;
 
   @ApiProperty({ nullable: true })
+  displayName!: string | null;
+
+  @ApiProperty({ nullable: true })
   firstName!: string | null;
 
   @ApiProperty({ nullable: true })
   lastName!: string | null;
+
+  @ApiProperty({ nullable: true })
+  avatarUrl!: string | null;
 }
 
 export class OrganizationMemberDto {
@@ -36,6 +42,9 @@ export class OrganizationMemberDto {
 
   @ApiProperty({ nullable: true, type: String, format: 'date-time' })
   joinedAt!: Date | null;
+
+  @ApiProperty({ nullable: true })
+  jobTitle!: string | null;
 
   @ApiProperty({ type: OrganizationMemberUserDto })
   user!: OrganizationMemberUserDto;

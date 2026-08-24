@@ -82,6 +82,22 @@ interface InvitationRegisterInput {
   invitationToken: string;
 }
 
+type InvitationRegisterTransactionResult =
+  | {
+      kind: 'registered';
+      user: {
+        id: string;
+        email: string;
+        displayName: string | null;
+        firstName: string | null;
+        lastName: string | null;
+      };
+      organizationId: string;
+      accessToken: string;
+      refreshPlain: string;
+    }
+  | { kind: 'expired' };
+
 @Injectable()
 export class AuthService {
   private readonly refreshTtlDays: number;
@@ -232,6 +248,10 @@ export class AuthService {
       ),
     );
 
+    if (result.kind === 'expired') {
+      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
+    }
+
     const memberships = await this.getMembershipViews(result.user.id);
     const response = this.buildAuthResponse(
       this.toUserView(result.user),
@@ -249,18 +269,7 @@ export class AuthService {
     dto: InvitationRegisterInput,
     passwordHash: string,
     tokenHash: string,
-  ): Promise<{
-    user: {
-      id: string;
-      email: string;
-      displayName: string | null;
-      firstName: string | null;
-      lastName: string | null;
-    };
-    organizationId: string;
-    accessToken: string;
-    refreshPlain: string;
-  }> {
+  ): Promise<InvitationRegisterTransactionResult> {
     const now = new Date();
     const invitation = await tx.organizationInvitation.findUnique({
       where: { tokenHash },
@@ -281,7 +290,14 @@ export class AuthService {
       );
     }
 
-    await this.ensureRegisterInvitationUsable(tx, invitation, now);
+    const usable = await this.ensureRegisterInvitationUsable(
+      tx,
+      invitation,
+      now,
+    );
+    if (usable.kind === 'expired') {
+      return usable;
+    }
 
     const email = this.normalizeEmail(invitation.email);
     const existing = await tx.user.findUnique({
@@ -361,6 +377,7 @@ export class AuthService {
     });
 
     return {
+      kind: 'registered',
       user,
       organizationId: invitation.organizationId,
       accessToken,
@@ -538,7 +555,7 @@ export class AuthService {
       expiresAt: Date;
     },
     now: Date,
-  ): Promise<void> {
+  ): Promise<{ kind: 'usable' } | { kind: 'expired' }> {
     if (
       invitation.status === InvitationStatus.EXPIRED ||
       invitation.expiresAt < now
@@ -551,6 +568,7 @@ export class AuthService {
         if (expired.count !== 1) {
           await this.throwCurrentRegisterInvitationState(tx, invitation.id);
         }
+        return { kind: 'expired' };
       }
       throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
     }
@@ -558,6 +576,8 @@ export class AuthService {
     if (invitation.status !== InvitationStatus.PENDING) {
       this.throwInvitationState(invitation.status, invitation.expiresAt);
     }
+
+    return { kind: 'usable' };
   }
 
   private async throwCurrentRegisterInvitationState(
@@ -575,17 +595,6 @@ export class AuthService {
         404,
         'Invitación no encontrada',
       );
-    }
-
-    if (
-      invitation.status === InvitationStatus.PENDING &&
-      invitation.expiresAt < new Date()
-    ) {
-      await tx.organizationInvitation.updateMany({
-        where: { id: invitationId, status: InvitationStatus.PENDING },
-        data: { status: InvitationStatus.EXPIRED },
-      });
-      throw new AuthError('INVITATION_EXPIRED', 410, 'La invitación expiró');
     }
 
     this.throwInvitationState(invitation.status, invitation.expiresAt);

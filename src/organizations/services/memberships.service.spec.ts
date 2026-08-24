@@ -13,9 +13,12 @@ function member(overrides: Record<string, unknown> = {}) {
     user: {
       id: 'user-1',
       email: 'member@example.com',
+      displayName: 'Member User',
       firstName: 'Member',
       lastName: 'User',
+      avatarUrl: 'https://example.com/member.png',
     },
+    jobTitle: 'Developer',
     roles: [
       {
         role: {
@@ -103,9 +106,12 @@ describe('MembershipsService', () => {
         user: {
           id: 'user-1',
           email: 'owner@example.com',
+          displayName: 'Owner User',
           firstName: 'Owner',
           lastName: 'User',
+          avatarUrl: 'https://example.com/owner.png',
         },
+        jobTitle: 'Owner title',
         roles: [{ role: { key: 'OWNER' } }],
       },
     ]);
@@ -119,11 +125,14 @@ describe('MembershipsService', () => {
           id: 'membership-1',
           status: MembershipStatus.ACTIVE,
           joinedAt,
+          jobTitle: 'Owner title',
           user: {
             id: 'user-1',
             email: 'owner@example.com',
+            displayName: 'Owner User',
             firstName: 'Owner',
             lastName: 'User',
+            avatarUrl: 'https://example.com/owner.png',
           },
           roles: ['OWNER'],
         },
@@ -151,8 +160,10 @@ describe('MembershipsService', () => {
           select: {
             id: true,
             email: true,
+            displayName: true,
             firstName: true,
             lastName: true,
+            avatarUrl: true,
           },
         },
         roles: {
@@ -182,8 +193,10 @@ describe('MembershipsService', () => {
           select: {
             id: true,
             email: true,
+            displayName: true,
             firstName: true,
             lastName: true,
+            avatarUrl: true,
           },
         },
         roles: {

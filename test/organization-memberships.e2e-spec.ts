@@ -30,7 +30,19 @@ type InvitationResponseBody = {
 };
 type MembersListBody = {
   members: Array<{
-    user: { email: string };
+    id: string;
+    status: string;
+    joinedAt: string | null;
+    jobTitle: string | null;
+    user: {
+      id: string;
+      email: string;
+      displayName: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      avatarUrl: string | null;
+    };
+    roles: string[];
   }>;
 };
 
@@ -787,6 +799,44 @@ describe('Organization memberships and invitations (e2e)', () => {
     }
   });
 
+  it('persists EXPIRED before rejecting existing-user invitation accept', async () => {
+    const owner = await registerOwner('accept-expired-owner');
+    const invited = await registerOwner('accept-expired-user');
+    const token = `${prefix}-accept-expired-token`;
+    const invitation = await createStoredInvitation({
+      organizationId: owner.activeOrganization?.id ?? '',
+      invitedByUserId: owner.user.id,
+      email: invited.user.email,
+      token,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+
+    await request(server())
+      .post(`/api/invitations/${token}/accept`)
+      .set(auth(invited.auth.accessToken))
+      .expect(410)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expect(body.code).toBe('INVITATION_EXPIRED');
+      });
+
+    await expect(
+      prisma.organizationInvitation.findUniqueOrThrow({
+        where: { id: invitation.id },
+      }),
+    ).resolves.toMatchObject({
+      status: InvitationStatus.EXPIRED,
+      acceptedAt: null,
+    });
+    expect(
+      await prisma.organizationMembership.count({
+        where: {
+          organizationId: owner.activeOrganization?.id,
+          userId: invited.user.id,
+        },
+      }),
+    ).toBe(0);
+  });
+
   it('rejects unusable invitation registration tokens without partial records', async () => {
     const owner = await registerOwner('rt-owner');
     const organizationId = owner.activeOrganization?.id ?? '';
@@ -870,6 +920,11 @@ describe('Organization memberships and invitations (e2e)', () => {
         }),
       ).toBeNull();
       expect(
+        await prisma.userCredential.count({
+          where: { user: { email: email(current.label) } },
+        }),
+      ).toBe(0);
+      expect(
         await prisma.organizationMembership.count({
           where: {
             organizationId,
@@ -878,10 +933,30 @@ describe('Organization memberships and invitations (e2e)', () => {
         }),
       ).toBe(0);
       expect(
+        await prisma.membershipRole.count({
+          where: {
+            membership: {
+              organizationId,
+              user: { email: email(current.label) },
+            },
+          },
+        }),
+      ).toBe(0);
+      expect(
         await prisma.userSession.count({
           where: { user: { email: email(current.label) } },
         }),
       ).toBe(0);
+      if (current.label === 'rt-expired') {
+        await expect(
+          prisma.organizationInvitation.findFirstOrThrow({
+            where: { organizationId, email: email(current.label) },
+          }),
+        ).resolves.toMatchObject({
+          status: InvitationStatus.EXPIRED,
+          acceptedAt: null,
+        });
+      }
     }
   });
 
@@ -936,6 +1011,16 @@ describe('Organization memberships and invitations (e2e)', () => {
       })
       .expect(201);
     const memberLogin = await login('permission-member');
+    await prisma.user.update({
+      where: { id: memberLogin.user.id },
+      data: { avatarUrl: 'https://example.com/permission-member.png' },
+    });
+    await prisma.organizationMembership.update({
+      where: {
+        id: memberLogin.activeMembership?.id ?? 'missing-membership-id',
+      },
+      data: { jobTitle: 'QA Engineer' },
+    });
 
     const members = await request(server())
       .get('/api/organizations/current/members')
@@ -948,6 +1033,31 @@ describe('Organization memberships and invitations (e2e)', () => {
     expect(memberList.members.map((member) => member.user.email)).not.toContain(
       email('permission-other-owner'),
     );
+    const listedMember = memberList.members.find(
+      (member) => member.user.email === email('permission-member'),
+    );
+    expect(listedMember).toMatchObject({
+      id: memberLogin.activeMembership?.id,
+      status: MembershipStatus.ACTIVE,
+      jobTitle: 'QA Engineer',
+      roles: ['MEMBER'],
+      user: {
+        id: memberLogin.user.id,
+        email: email('permission-member'),
+        displayName: 'Permission Member',
+        firstName: 'Permission',
+        lastName: 'Member',
+        avatarUrl: 'https://example.com/permission-member.png',
+      },
+    });
+    expect(typeof listedMember?.joinedAt).toBe('string');
+    expect(listedMember?.user).toMatchObject({
+      displayName: 'Permission Member',
+      firstName: 'Permission',
+      lastName: 'Member',
+      avatarUrl: 'https://example.com/permission-member.png',
+    });
+    expect(listedMember?.user).not.toHaveProperty('jobTitle');
     expect(memberList.members[0].user).not.toHaveProperty('credential');
     expect(memberList.members[0].user).not.toHaveProperty('sessions');
 

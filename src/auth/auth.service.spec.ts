@@ -396,8 +396,16 @@ describe('AuthService', () => {
     },
   );
 
-  it('registro por invitación expirada persiste EXPIRED de forma condicionada', async () => {
-    const { service, tx } = makeServices();
+  it('registro por invitación expirada persiste EXPIRED y lanza fuera de la transacción', async () => {
+    const { service, tx, serializableTransactionService } = makeServices();
+    const transactionResults: unknown[] = [];
+    serializableTransactionService.run.mockImplementationOnce(
+      async (callback: (transactionClient: typeof tx) => Promise<unknown>) => {
+        const result = await callback(tx);
+        transactionResults.push(result);
+        return result;
+      },
+    );
     tx.organizationInvitation.findUnique.mockResolvedValue(
       invitation({ expiresAt: pastDate() }),
     );
@@ -414,6 +422,12 @@ describe('AuthService', () => {
       where: { id: 'invitation-1', status: InvitationStatus.PENDING },
       data: { status: InvitationStatus.EXPIRED },
     });
+    expect(transactionResults).toEqual([{ kind: 'expired' }]);
+    expect(tx.user.create).not.toHaveBeenCalled();
+    expect(tx.userCredential.create).not.toHaveBeenCalled();
+    expect(tx.organizationMembership.create).not.toHaveBeenCalled();
+    expect(tx.membershipRole.upsert).not.toHaveBeenCalled();
+    expect(tx.userSession.create).not.toHaveBeenCalled();
   });
 
   it('registro por invitación rechaza User existente con EMAIL_ALREADY_REGISTERED antes del claim', async () => {
