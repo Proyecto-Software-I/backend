@@ -4,6 +4,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '../access-control/decorators/require-p
 import { PermissionGuard } from '../access-control/guards/permission.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationsController } from './organizations.controller';
+import type { OrganizationRolesManagementService } from './services/organization-roles-management.service';
 import type { InvitationsService } from './services/invitations.service';
 import type { MembershipsService } from './services/memberships.service';
 
@@ -22,14 +23,20 @@ describe('OrganizationsController', () => {
       }),
       revokeInvitation: jest.fn().mockResolvedValue({ invitation: {} }),
     } as unknown as InvitationsService;
+    const rolesService = {
+      listOrganizationRoles: jest.fn().mockResolvedValue({ roles: [] }),
+      listPermissionCatalog: jest.fn().mockResolvedValue({ permissions: [] }),
+    } as unknown as OrganizationRolesManagementService;
 
     return {
       controller: new OrganizationsController(
         membershipsService,
         invitationsService,
+        rolesService,
       ),
       membershipsService,
       invitationsService,
+      rolesService,
     };
   }
 
@@ -42,7 +49,7 @@ describe('OrganizationsController', () => {
     expect(guards).toEqual([JwtAuthGuard, PermissionGuard]);
   });
 
-  it('requires members.read for list members and list invitations', () => {
+  it('requires members.read for read endpoints', () => {
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_KEY,
@@ -53,6 +60,18 @@ describe('OrganizationsController', () => {
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_KEY,
         OrganizationsController.prototype.listInvitations,
+      ),
+    ).toEqual(['members.read']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.listRoles,
+      ),
+    ).toEqual(['members.read']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.listPermissions,
       ),
     ).toEqual(['members.read']);
   });
@@ -100,6 +119,22 @@ describe('OrganizationsController', () => {
     expect(invitationsService.listCurrentInvitations).toHaveBeenCalledWith(
       'org-1',
     );
+  });
+
+  it('passes the current tenant to roles service', async () => {
+    const { controller, rolesService } = makeController();
+
+    await controller.listRoles('org-1');
+
+    expect(rolesService.listOrganizationRoles).toHaveBeenCalledWith('org-1');
+  });
+
+  it('delegates permission catalog listing to roles service', async () => {
+    const { controller, rolesService } = makeController();
+
+    await controller.listPermissions();
+
+    expect(rolesService.listPermissionCatalog).toHaveBeenCalledWith();
   });
 
   it('passes current tenant and authenticated user to create invitation service', async () => {

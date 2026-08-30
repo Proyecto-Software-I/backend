@@ -33,8 +33,13 @@ import {
   OrganizationMembersResponseDto,
   UpdateMembershipStatusDto,
 } from './dto/member-list.dto';
+import {
+  OrganizationRolesResponseDto,
+  PermissionCatalogResponseDto,
+} from './dto/role-list.dto';
 import { InvitationsService } from './services/invitations.service';
 import { MembershipsService } from './services/memberships.service';
+import { OrganizationRolesManagementService } from './services/organization-roles-management.service';
 
 @ApiTags('organizations')
 @ApiBearerAuth()
@@ -44,6 +49,7 @@ export class OrganizationsController {
   constructor(
     private readonly membershipsService: MembershipsService,
     private readonly invitationsService: InvitationsService,
+    private readonly rolesService: OrganizationRolesManagementService,
   ) {}
 
   @Get('members')
@@ -84,6 +90,44 @@ export class OrganizationsController {
     @CurrentTenant() organizationId: string,
   ): Promise<OrganizationInvitationsResponseDto> {
     return this.invitationsService.listCurrentInvitations(organizationId);
+  }
+
+  @Get('roles')
+  @RequirePermissions('members.read')
+  @ApiOperation({ summary: 'Listar roles de la organización activa' })
+  @ApiResponse({
+    status: 200,
+    description: 'Roles ORGANIZATION de la organización activa',
+    type: OrganizationRolesResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  async listRoles(
+    @CurrentTenant() organizationId: string,
+  ): Promise<OrganizationRolesResponseDto> {
+    return this.rolesService.listOrganizationRoles(organizationId);
+  }
+
+  @Get('permissions')
+  @RequirePermissions('members.read')
+  @ApiOperation({ summary: 'Listar catálogo global de permisos' })
+  @ApiResponse({
+    status: 200,
+    description: 'Catálogo global de permisos',
+    type: PermissionCatalogResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  async listPermissions(): Promise<PermissionCatalogResponseDto> {
+    return this.rolesService.listPermissionCatalog();
   }
 
   @Post('invitations')

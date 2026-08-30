@@ -1,7 +1,7 @@
 ## 1. DTOs And Contracts
 
-- [ ] 1.1 Add DTOs for organization role responses with `id`, `key`, `name`, `description`, `scope`, `isSystem`, and `permissions` as permission key strings.
-- [ ] 1.2 Add DTOs for permission catalog responses with `key` and `description`.
+- [x] 1.1 Add DTOs for organization role responses with `id`, `key`, `name`, `description`, `scope`, `isSystem`, and `permissions` as permission key strings.
+- [x] 1.2 Add DTOs for permission catalog responses with `key` and `description`.
 - [ ] 1.3 Add DTOs for custom role creation with required `name`, optional `description`, and required `permissionKeys` array.
 - [ ] 1.4 Add DTOs for custom role update with optional `name`, optional `description`, and optional `permissionKeys` array.
 - [ ] 1.5 Add DTOs for membership custom role replacement with required `roleIds` array.
@@ -9,9 +9,9 @@
 
 ## 2. Role Management Service
 
-- [ ] 2.1 Add a focused organization role-management service under the organizations feature.
-- [ ] 2.2 Implement tenant-scoped role listing for `organizationId = active tenant` and `scope = ORGANIZATION` with stable ordering.
-- [ ] 2.3 Implement permission catalog listing ordered by permission key.
+- [x] 2.1 Add a focused organization role-management service under the organizations feature.
+- [x] 2.2 Implement tenant-scoped role listing for `organizationId = active tenant` and `scope = ORGANIZATION` with stable ordering.
+- [x] 2.3 Implement permission catalog listing ordered by permission key.
 - [ ] 2.4 Implement backend-generated stable custom role key creation from role name with collision suffix handling.
 - [ ] 2.5 Implement atomic custom role creation with `scope = ORGANIZATION`, `isSystem = false`, and validated permission assignments.
 - [ ] 2.6 Implement atomic custom role update that preserves `key`, `scope`, `organizationId`, and `isSystem`, and replaces permissions only when `permissionKeys` is provided.
@@ -21,9 +21,9 @@
 
 ## 3. Controller And Module Wiring
 
-- [ ] 3.1 Register the role-management service in `OrganizationsModule` without adding a new module or dependency.
-- [ ] 3.2 Add `GET /api/organizations/current/roles` to `OrganizationsController` with `members.read`.
-- [ ] 3.3 Add `GET /api/organizations/current/permissions` to `OrganizationsController` with `members.read`.
+- [x] 3.1 Register the role-management service in `OrganizationsModule` without adding a new module or dependency.
+- [x] 3.2 Add `GET /api/organizations/current/roles` to `OrganizationsController` with `members.read`.
+- [x] 3.3 Add `GET /api/organizations/current/permissions` to `OrganizationsController` with `members.read`.
 - [ ] 3.4 Add `POST /api/organizations/current/roles` to `OrganizationsController` with `members.manage`.
 - [ ] 3.5 Add `PATCH /api/organizations/current/roles/:roleId` to `OrganizationsController` with `members.manage`.
 - [ ] 3.6 Add `DELETE /api/organizations/current/roles/:roleId` to `OrganizationsController` with `members.manage`.
@@ -40,8 +40,8 @@
 
 ## 5. Unit Tests
 
-- [ ] 5.1 Add service unit tests for role listing scoped to active tenant and `ORGANIZATION` scope only.
-- [ ] 5.2 Add service unit tests for permission catalog listing ordered by key.
+- [x] 5.1 Add service unit tests for role listing scoped to active tenant and `ORGANIZATION` scope only.
+- [x] 5.2 Add service unit tests for permission catalog listing ordered by key.
 - [ ] 5.3 Add service unit tests for custom role creation, generated key stability, collision suffix behavior, empty permission arrays, and permission validation.
 - [ ] 5.4 Add service unit tests for duplicate `permissionKeys` and unknown permissions.
 - [ ] 5.5 Add service unit tests for custom role creation retrying a `P2002` collision on `(organizationId, scope, key)` with a recalculated key candidate and returning `ROLE_ALREADY_EXISTS` after bounded attempts.
@@ -54,8 +54,8 @@
 
 ## 6. Controller Tests
 
-- [ ] 6.1 Extend controller metadata tests to verify `JwtAuthGuard` and `PermissionGuard` remain the guards for organization endpoints.
-- [ ] 6.2 Verify `GET /roles` and `GET /permissions` require `members.read`.
+- [x] 6.1 Extend controller metadata tests to verify `JwtAuthGuard` and `PermissionGuard` remain the guards for organization endpoints.
+- [x] 6.2 Verify `GET /roles` and `GET /permissions` require `members.read`.
 - [ ] 6.3 Verify `POST /roles`, `PATCH /roles/:roleId`, `DELETE /roles/:roleId`, and `PUT /members/:membershipId/roles` require `members.manage`.
 - [ ] 6.4 Verify controller methods pass `CurrentTenant`, route params, request bodies, and authenticated context only where needed to the role-management service.
 
