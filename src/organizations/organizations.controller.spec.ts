@@ -26,6 +26,9 @@ describe('OrganizationsController', () => {
     const rolesService = {
       listOrganizationRoles: jest.fn().mockResolvedValue({ roles: [] }),
       listPermissionCatalog: jest.fn().mockResolvedValue({ permissions: [] }),
+      createOrganizationRole: jest.fn().mockResolvedValue({ role: {} }),
+      updateOrganizationRole: jest.fn().mockResolvedValue({ role: {} }),
+      deleteOrganizationRole: jest.fn().mockResolvedValue({ role: {} }),
     } as unknown as OrganizationRolesManagementService;
 
     return {
@@ -101,6 +104,24 @@ describe('OrganizationsController', () => {
         OrganizationsController.prototype.removeMembership,
       ),
     ).toEqual(['members.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.createRole,
+      ),
+    ).toEqual(['members.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.updateRole,
+      ),
+    ).toEqual(['members.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.deleteRole,
+      ),
+    ).toEqual(['members.manage']);
   });
 
   it('passes the current tenant to members service', async () => {
@@ -135,6 +156,46 @@ describe('OrganizationsController', () => {
     await controller.listPermissions();
 
     expect(rolesService.listPermissionCatalog).toHaveBeenCalledWith();
+  });
+
+  it('passes current tenant and create role DTO to roles service', async () => {
+    const { controller, rolesService } = makeController();
+    const dto = {
+      name: 'Security reviewer',
+      description: 'Can inspect analysis and audit information.',
+      permissionKeys: ['analysis.read', 'audit.read'],
+    };
+
+    await controller.createRole('org-1', dto);
+
+    expect(rolesService.createOrganizationRole).toHaveBeenCalledWith(
+      'org-1',
+      dto,
+    );
+  });
+
+  it('passes current tenant, role id and update role DTO to roles service', async () => {
+    const { controller, rolesService } = makeController();
+    const dto = { description: null, permissionKeys: ['members.read'] };
+
+    await controller.updateRole('org-1', 'role-1', dto);
+
+    expect(rolesService.updateOrganizationRole).toHaveBeenCalledWith(
+      'org-1',
+      'role-1',
+      dto,
+    );
+  });
+
+  it('passes current tenant and role id to delete role service', async () => {
+    const { controller, rolesService } = makeController();
+
+    await controller.deleteRole('org-1', 'role-1');
+
+    expect(rolesService.deleteOrganizationRole).toHaveBeenCalledWith(
+      'org-1',
+      'role-1',
+    );
   });
 
   it('passes current tenant and authenticated user to create invitation service', async () => {
