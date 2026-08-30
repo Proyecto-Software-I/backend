@@ -32,11 +32,11 @@
 
 ## 4. Swagger And Error Contracts
 
-- [ ] 4.1 Document all six new endpoints with Swagger tags, bearer auth, summaries, request DTOs, response DTOs, success status codes, and relevant errors.
-- [ ] 4.2 Use the standard `{ statusCode, code, message }` error contract for role administration functional errors.
-- [ ] 4.3 Add only necessary new functional codes in service behavior: `ROLE_NOT_FOUND`, `ROLE_ALREADY_EXISTS`, `ROLE_IS_SYSTEM`, `ROLE_IN_USE`, and `PERMISSION_NOT_FOUND`.
-- [ ] 4.4 Reuse existing `MEMBER_ACCESS_DENIED`, `TENANT_REQUIRED`, `MEMBERSHIP_NOT_FOUND`, and `VALIDATION_ERROR` behavior where applicable.
-- [ ] 4.5 Do not change the preexisting `/auth/me` Swagger discrepancy as part of this task.
+- [x] 4.1 Document all six new endpoints with Swagger tags, bearer auth, summaries, request DTOs, response DTOs, success status codes, and relevant errors.
+- [x] 4.2 Use the standard `{ statusCode, code, message }` error contract for role administration functional errors.
+- [x] 4.3 Add only necessary new functional codes in service behavior: `ROLE_NOT_FOUND`, `ROLE_ALREADY_EXISTS`, `ROLE_IS_SYSTEM`, `ROLE_IN_USE`, and `PERMISSION_NOT_FOUND`.
+- [x] 4.4 Reuse existing `MEMBER_ACCESS_DENIED`, `TENANT_REQUIRED`, `MEMBERSHIP_NOT_FOUND`, and `VALIDATION_ERROR` behavior where applicable.
+- [x] 4.5 Do not change the preexisting `/auth/me` Swagger discrepancy as part of this task.
 
 ## 5. Unit Tests
 

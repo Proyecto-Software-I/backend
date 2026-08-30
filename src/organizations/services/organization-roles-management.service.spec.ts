@@ -837,13 +837,19 @@ describe('OrganizationRolesManagementService', () => {
     expect(tx.membershipRole.createMany).not.toHaveBeenCalled();
   });
 
-  it('does not touch custom roles outside the active tenant managed subset', async () => {
+  it('does not touch custom roles outside the active tenant ORGANIZATION managed subset', async () => {
     const { service, tx } = makeService();
     tx.organizationMembership.findFirst.mockResolvedValue(
       membership({
         roles: [
           membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
           membershipRole({ id: 'role-a', key: 'ROLE_A', isSystem: false }),
+          membershipRole({
+            id: 'project-role',
+            key: 'PROJECT_VIEWER',
+            scope: RoleScope.PROJECT,
+            isSystem: false,
+          }),
           membershipRole({
             id: 'foreign-custom-role',
             organizationId: 'org-2',
@@ -857,6 +863,12 @@ describe('OrganizationRolesManagementService', () => {
       membership({
         roles: [
           membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+          membershipRole({
+            id: 'project-role',
+            key: 'PROJECT_VIEWER',
+            scope: RoleScope.PROJECT,
+            isSystem: false,
+          }),
           membershipRole({
             id: 'foreign-custom-role',
             organizationId: 'org-2',

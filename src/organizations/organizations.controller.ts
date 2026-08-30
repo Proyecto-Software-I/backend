@@ -10,8 +10,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -100,7 +102,11 @@ export class OrganizationsController {
 
   @Get('roles')
   @RequirePermissions('members.read')
-  @ApiOperation({ summary: 'Listar roles de la organización activa' })
+  @ApiOperation({
+    summary: 'Listar roles de la organización activa',
+    description:
+      'Requiere members.read. Lista roles ORGANIZATION del tenant activo.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Roles ORGANIZATION de la organización activa',
@@ -120,7 +126,11 @@ export class OrganizationsController {
 
   @Get('permissions')
   @RequirePermissions('members.read')
-  @ApiOperation({ summary: 'Listar catálogo global de permisos' })
+  @ApiOperation({
+    summary: 'Listar catálogo global de permisos',
+    description:
+      'Requiere members.read. Devuelve el catálogo global de permisos.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Catálogo global de permisos',
@@ -140,7 +150,10 @@ export class OrganizationsController {
   @RequirePermissions('members.manage')
   @ApiOperation({
     summary: 'Crear rol personalizado de la organización activa',
+    description:
+      'Requiere members.manage. organizationId, scope, key e isSystem son definidos por el backend.',
   })
+  @ApiBody({ type: CreateOrganizationRoleDto })
   @ApiResponse({
     status: 201,
     description: 'Rol personalizado creado',
@@ -148,7 +161,8 @@ export class OrganizationsController {
   })
   @ApiResponse({
     status: 400,
-    description: 'VALIDATION_ERROR, PERMISSION_NOT_FOUND',
+    description:
+      'Errores posibles: VALIDATION_ERROR, PERMISSION_NOT_FOUND. Formato: { statusCode, code, message }',
   })
   @ApiResponse({ status: 401, description: 'Sesión inválida' })
   @ApiResponse({
@@ -156,7 +170,11 @@ export class OrganizationsController {
     description:
       'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
   })
-  @ApiResponse({ status: 409, description: 'ROLE_ALREADY_EXISTS' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Error posible: ROLE_ALREADY_EXISTS. Formato: { statusCode, code, message }',
+  })
   async createRole(
     @CurrentTenant() organizationId: string,
     @Body() dto: CreateOrganizationRoleDto,
@@ -168,7 +186,11 @@ export class OrganizationsController {
   @RequirePermissions('members.manage')
   @ApiOperation({
     summary: 'Actualizar rol personalizado de la organización activa',
+    description:
+      'Requiere members.manage. Solo name, description y permissionKeys son editables; key, scope, isSystem y organizationId no vienen del cliente.',
   })
+  @ApiParam({ name: 'roleId', description: 'ID del rol personalizado' })
+  @ApiBody({ type: UpdateOrganizationRoleDto })
   @ApiResponse({
     status: 200,
     description: 'Rol personalizado actualizado',
@@ -176,7 +198,8 @@ export class OrganizationsController {
   })
   @ApiResponse({
     status: 400,
-    description: 'VALIDATION_ERROR, PERMISSION_NOT_FOUND',
+    description:
+      'Errores posibles: VALIDATION_ERROR, PERMISSION_NOT_FOUND. Formato: { statusCode, code, message }',
   })
   @ApiResponse({ status: 401, description: 'Sesión inválida' })
   @ApiResponse({
@@ -184,8 +207,16 @@ export class OrganizationsController {
     description:
       'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
   })
-  @ApiResponse({ status: 404, description: 'ROLE_NOT_FOUND' })
-  @ApiResponse({ status: 409, description: 'ROLE_IS_SYSTEM' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Error posible: ROLE_NOT_FOUND. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Error posible: ROLE_IS_SYSTEM. Formato: { statusCode, code, message }',
+  })
   async updateRole(
     @CurrentTenant() organizationId: string,
     @Param('roleId') roleId: string,
@@ -202,7 +233,10 @@ export class OrganizationsController {
   @RequirePermissions('members.manage')
   @ApiOperation({
     summary: 'Eliminar rol personalizado de la organización activa',
+    description:
+      'Requiere members.manage. Solo elimina roles personalizados ORGANIZATION no asignados.',
   })
+  @ApiParam({ name: 'roleId', description: 'ID del rol personalizado' })
   @ApiResponse({
     status: 200,
     description: 'Rol personalizado eliminado',
@@ -214,8 +248,16 @@ export class OrganizationsController {
     description:
       'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
   })
-  @ApiResponse({ status: 404, description: 'ROLE_NOT_FOUND' })
-  @ApiResponse({ status: 409, description: 'ROLE_IS_SYSTEM, ROLE_IN_USE' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Error posible: ROLE_NOT_FOUND. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Errores posibles: ROLE_IS_SYSTEM, ROLE_IN_USE. Formato: { statusCode, code, message }',
+  })
   async deleteRole(
     @CurrentTenant() organizationId: string,
     @Param('roleId') roleId: string,
@@ -227,13 +269,24 @@ export class OrganizationsController {
   @RequirePermissions('members.manage')
   @ApiOperation({
     summary: 'Reemplazar roles personalizados de un miembro',
+    description:
+      'Requiere members.manage. roleIds representa el set completo de roles personalizados ORGANIZATION adicionales; puede ser [] y no acepta OWNER, MEMBER ni otros roles de sistema.',
   })
+  @ApiParam({
+    name: 'membershipId',
+    description: 'ID de la membresía objetivo',
+  })
+  @ApiBody({ type: ReplaceMembershipRolesDto })
   @ApiResponse({
     status: 200,
     description: 'Roles personalizados del miembro actualizados',
     type: OrganizationMemberResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Error posible: VALIDATION_ERROR. Formato: { statusCode, code, message }',
+  })
   @ApiResponse({ status: 401, description: 'Sesión inválida' })
   @ApiResponse({
     status: 403,
@@ -242,9 +295,14 @@ export class OrganizationsController {
   })
   @ApiResponse({
     status: 404,
-    description: 'MEMBERSHIP_NOT_FOUND, ROLE_NOT_FOUND',
+    description:
+      'Errores posibles: MEMBERSHIP_NOT_FOUND, ROLE_NOT_FOUND. Formato: { statusCode, code, message }',
   })
-  @ApiResponse({ status: 409, description: 'ROLE_IS_SYSTEM' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Error posible: ROLE_IS_SYSTEM. Formato: { statusCode, code, message }',
+  })
   async replaceMembershipRoles(
     @CurrentTenant() organizationId: string,
     @Param('membershipId') membershipId: string,
