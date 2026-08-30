@@ -1,10 +1,17 @@
 /* eslint-disable @typescript-eslint/unbound-method */
-import { Prisma, RoleScope } from '../../generated/prisma/client';
+import {
+  MembershipStatus,
+  Prisma,
+  RoleScope,
+} from '../../generated/prisma/client';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { OrganizationRolesManagementService } from './organization-roles-management.service';
 
 type RoleCreateCall = { data: Record<string, unknown> };
 type RoleFindFirstCall = { where: { key?: string; scope?: RoleScope } };
+type MembershipFindFirstCall = {
+  where: { id: string; organizationId: string; status: unknown };
+};
 
 function getRoleCreateCall(create: jest.Mock, index: number): RoleCreateCall {
   const calls = create.mock.calls as unknown as Array<[RoleCreateCall]>;
@@ -16,6 +23,16 @@ function getRoleFindFirstCall(
   index: number,
 ): RoleFindFirstCall {
   const calls = findFirst.mock.calls as unknown as Array<[RoleFindFirstCall]>;
+  return calls[index][0];
+}
+
+function getMembershipFindFirstCall(
+  findFirst: jest.Mock,
+  index: number,
+): MembershipFindFirstCall {
+  const calls = findFirst.mock.calls as unknown as Array<
+    [MembershipFindFirstCall]
+  >;
   return calls[index][0];
 }
 
@@ -44,20 +61,66 @@ function role(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function membershipRole(roleOverrides: Record<string, unknown>) {
+  return {
+    role: {
+      id: 'role-member',
+      organizationId: 'org-1',
+      key: 'MEMBER',
+      scope: RoleScope.ORGANIZATION,
+      isSystem: true,
+      ...roleOverrides,
+    },
+  };
+}
+
+function membership(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'membership-1',
+    organizationId: 'org-1',
+    userId: 'user-1',
+    status: MembershipStatus.ACTIVE,
+    joinedAt: new Date('2026-01-01T00:00:00.000Z'),
+    jobTitle: 'Developer',
+    user: {
+      id: 'user-1',
+      email: 'member@example.com',
+      displayName: 'Member User',
+      firstName: 'Member',
+      lastName: 'User',
+      avatarUrl: null,
+    },
+    roles: [
+      membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+      membershipRole({ id: 'role-a', key: 'ROLE_A', isSystem: false }),
+    ],
+    ...overrides,
+  };
+}
+
 function makeService() {
   const tx = {
     role: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+    },
+    organizationMembership: {
+      findFirst: jest.fn(),
+      findFirstOrThrow: jest.fn(),
     },
     permission: { findMany: jest.fn() },
     rolePermission: {
       deleteMany: jest.fn(),
       createMany: jest.fn(),
     },
-    membershipRole: { count: jest.fn() },
+    membershipRole: {
+      count: jest.fn(),
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
+    },
   };
   const prisma = {
     role: { findMany: jest.fn(), findFirst: jest.fn() },
@@ -576,6 +639,244 @@ describe('OrganizationRolesManagementService', () => {
     ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND', status: 404 });
     const findFirstCall = getRoleFindFirstCall(tx.role.findFirst, 0);
     expect(findFirstCall.where.scope).toBe(RoleScope.ORGANIZATION);
+  });
+
+  it('replaces custom organization roles while preserving MEMBER', async () => {
+    const { service, tx, serializableTransactionService } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(membership());
+    tx.role.findMany.mockResolvedValue([{ id: 'role-b', isSystem: false }]);
+    tx.organizationMembership.findFirstOrThrow.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+          membershipRole({ id: 'role-b', key: 'ROLE_B', isSystem: false }),
+        ],
+      }),
+    );
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-1', {
+        roleIds: ['role-b'],
+      }),
+    ).resolves.toMatchObject({ member: { roles: ['MEMBER', 'ROLE_B'] } });
+    expect(serializableTransactionService.run).toHaveBeenCalledTimes(1);
+    expect(tx.membershipRole.deleteMany).toHaveBeenCalledWith({
+      where: {
+        membershipId: 'membership-1',
+        roleId: { in: ['role-a'] },
+      },
+    });
+    expect(tx.membershipRole.createMany).toHaveBeenCalledWith({
+      data: [{ membershipId: 'membership-1', roleId: 'role-b' }],
+    });
+  });
+
+  it('removes all managed custom organization roles when roleIds is empty and preserves system roles', async () => {
+    const { service, tx } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(membership());
+    tx.organizationMembership.findFirstOrThrow.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+        ],
+      }),
+    );
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-1', { roleIds: [] }),
+    ).resolves.toMatchObject({ member: { roles: ['MEMBER'] } });
+    expect(tx.role.findMany).not.toHaveBeenCalled();
+    expect(tx.membershipRole.deleteMany).toHaveBeenCalledWith({
+      where: {
+        membershipId: 'membership-1',
+        roleId: { in: ['role-a'] },
+      },
+    });
+    expect(tx.membershipRole.createMany).not.toHaveBeenCalled();
+  });
+
+  it('preserves OWNER and MEMBER while replacing custom roles', async () => {
+    const { service, tx } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-owner', key: 'OWNER', isSystem: true }),
+          membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+          membershipRole({ id: 'role-a', key: 'ROLE_A', isSystem: false }),
+        ],
+      }),
+    );
+    tx.role.findMany.mockResolvedValue([{ id: 'role-b', isSystem: false }]);
+    tx.organizationMembership.findFirstOrThrow.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-owner', key: 'OWNER', isSystem: true }),
+          membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+          membershipRole({ id: 'role-b', key: 'ROLE_B', isSystem: false }),
+        ],
+      }),
+    );
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-1', {
+        roleIds: ['role-b'],
+      }),
+    ).resolves.toMatchObject({
+      member: { roles: ['OWNER', 'MEMBER', 'ROLE_B'] },
+    });
+  });
+
+  it('does not invent MEMBER when the membership does not already have it', async () => {
+    const { service, tx } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-a', key: 'ROLE_A', isSystem: false }),
+        ],
+      }),
+    );
+    tx.role.findMany.mockResolvedValue([{ id: 'role-b', isSystem: false }]);
+    tx.organizationMembership.findFirstOrThrow.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-b', key: 'ROLE_B', isSystem: false }),
+        ],
+      }),
+    );
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-1', {
+        roleIds: ['role-b'],
+      }),
+    ).resolves.toMatchObject({ member: { roles: ['ROLE_B'] } });
+  });
+
+  it.each(['OWNER', 'MEMBER', 'SYSTEM_CUSTOM'])(
+    'rejects system role replacement input for %s without changing assignments',
+    async (key) => {
+      const { service, tx } = makeService();
+      tx.organizationMembership.findFirst.mockResolvedValue(membership());
+      tx.role.findMany.mockResolvedValue([
+        { id: 'system-role', key, isSystem: true },
+      ]);
+
+      await expect(
+        service.replaceMembershipRoles('org-1', 'membership-1', {
+          roleIds: ['system-role'],
+        }),
+      ).rejects.toMatchObject({ code: 'ROLE_IS_SYSTEM', status: 409 });
+      expect(tx.membershipRole.deleteMany).not.toHaveBeenCalled();
+      expect(tx.membershipRole.createMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns MEMBERSHIP_NOT_FOUND for cross-tenant or removed memberships', async () => {
+    const { service, tx } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-other', {
+        roleIds: [],
+      }),
+    ).rejects.toMatchObject({ code: 'MEMBERSHIP_NOT_FOUND', status: 404 });
+    const findFirstCall = getMembershipFindFirstCall(
+      tx.organizationMembership.findFirst,
+      0,
+    );
+    expect(findFirstCall.where).toEqual({
+      id: 'membership-other',
+      organizationId: 'org-1',
+      status: { not: MembershipStatus.REMOVED },
+    });
+  });
+
+  it('returns ROLE_NOT_FOUND for cross-tenant, PROJECT or missing role replacement input without changes', async () => {
+    const { service, tx } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(membership());
+    tx.role.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-1', {
+        roleIds: ['bad-role'],
+      }),
+    ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND', status: 404 });
+    expect(tx.role.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['bad-role'] },
+        organizationId: 'org-1',
+        scope: RoleScope.ORGANIZATION,
+      },
+      select: { id: true, isSystem: true },
+    });
+    expect(tx.membershipRole.deleteMany).not.toHaveBeenCalled();
+    expect(tx.membershipRole.createMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate roleIds before opening a transaction', async () => {
+    const { service, serializableTransactionService } = makeService();
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-1', {
+        roleIds: ['role-a', 'role-a'],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+    expect(serializableTransactionService.run).not.toHaveBeenCalled();
+  });
+
+  it('validates all replacement role IDs before mutating assignments', async () => {
+    const { service, tx } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(membership());
+    tx.role.findMany.mockResolvedValue([{ id: 'role-b', isSystem: false }]);
+
+    await expect(
+      service.replaceMembershipRoles('org-1', 'membership-1', {
+        roleIds: ['role-b', 'missing-role'],
+      }),
+    ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND', status: 404 });
+    expect(tx.membershipRole.deleteMany).not.toHaveBeenCalled();
+    expect(tx.membershipRole.createMany).not.toHaveBeenCalled();
+  });
+
+  it('does not touch custom roles outside the active tenant managed subset', async () => {
+    const { service, tx } = makeService();
+    tx.organizationMembership.findFirst.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+          membershipRole({ id: 'role-a', key: 'ROLE_A', isSystem: false }),
+          membershipRole({
+            id: 'foreign-custom-role',
+            organizationId: 'org-2',
+            key: 'FOREIGN_CUSTOM',
+            isSystem: false,
+          }),
+        ],
+      }),
+    );
+    tx.organizationMembership.findFirstOrThrow.mockResolvedValue(
+      membership({
+        roles: [
+          membershipRole({ id: 'role-member', key: 'MEMBER', isSystem: true }),
+          membershipRole({
+            id: 'foreign-custom-role',
+            organizationId: 'org-2',
+            key: 'FOREIGN_CUSTOM',
+            isSystem: false,
+          }),
+        ],
+      }),
+    );
+
+    await service.replaceMembershipRoles('org-1', 'membership-1', {
+      roleIds: [],
+    });
+
+    expect(tx.membershipRole.deleteMany).toHaveBeenCalledWith({
+      where: {
+        membershipId: 'membership-1',
+        roleId: { in: ['role-a'] },
+      },
+    });
   });
 
   it('does not treat unrelated P2002 constraints as role key collisions', async () => {

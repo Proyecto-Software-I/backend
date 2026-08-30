@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -39,6 +40,7 @@ import {
   OrganizationRoleResponseDto,
   OrganizationRolesResponseDto,
   PermissionCatalogResponseDto,
+  ReplaceMembershipRolesDto,
   UpdateOrganizationRoleDto,
 } from './dto/role-list.dto';
 import { InvitationsService } from './services/invitations.service';
@@ -219,6 +221,40 @@ export class OrganizationsController {
     @Param('roleId') roleId: string,
   ): Promise<{ role: OrganizationRoleDto }> {
     return this.rolesService.deleteOrganizationRole(organizationId, roleId);
+  }
+
+  @Put('members/:membershipId/roles')
+  @RequirePermissions('members.manage')
+  @ApiOperation({
+    summary: 'Reemplazar roles personalizados de un miembro',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Roles personalizados del miembro actualizados',
+    type: OrganizationMemberResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'MEMBERSHIP_NOT_FOUND, ROLE_NOT_FOUND',
+  })
+  @ApiResponse({ status: 409, description: 'ROLE_IS_SYSTEM' })
+  async replaceMembershipRoles(
+    @CurrentTenant() organizationId: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: ReplaceMembershipRolesDto,
+  ): Promise<OrganizationMemberResponseDto> {
+    return this.rolesService.replaceMembershipRoles(
+      organizationId,
+      membershipId,
+      dto,
+    );
   }
 
   @Post('invitations')

@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, RoleScope } from '../../generated/prisma/client';
+import {
+  MembershipStatus,
+  Prisma,
+  RoleScope,
+} from '../../generated/prisma/client';
 import { AuthError } from '../../common/exceptions/auth-error';
 import { SerializableTransactionService } from '../../organization-provisioning/services/serializable-transaction.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -8,8 +12,13 @@ import type {
   OrganizationRoleDto,
   OrganizationRolesResponseDto,
   PermissionCatalogResponseDto,
+  ReplaceMembershipRolesDto,
   UpdateOrganizationRoleDto,
 } from '../dto/role-list.dto';
+import type {
+  OrganizationMemberDto,
+  OrganizationMemberResponseDto,
+} from '../dto/member-list.dto';
 
 const ROLE_KEY_MAX_LENGTH = 100;
 const ROLE_KEY_FALLBACK = 'custom-role';
@@ -20,6 +29,32 @@ const ROLE_WITH_PERMISSIONS_INCLUDE = {
     include: { permission: true },
   },
 } satisfies Prisma.RoleInclude;
+
+const MEMBERSHIP_WITH_ROLES_INCLUDE = {
+  user: {
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      firstName: true,
+      lastName: true,
+      avatarUrl: true,
+    },
+  },
+  roles: {
+    include: {
+      role: {
+        select: {
+          id: true,
+          organizationId: true,
+          key: true,
+          scope: true,
+          isSystem: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.OrganizationMembershipInclude;
 
 @Injectable()
 export class OrganizationRolesManagementService {
@@ -113,6 +148,25 @@ export class OrganizationRolesManagementService {
     );
 
     return { role };
+  }
+
+  async replaceMembershipRoles(
+    organizationId: string,
+    membershipId: string,
+    dto: ReplaceMembershipRolesDto,
+  ): Promise<OrganizationMemberResponseDto> {
+    this.ensureUniqueRoleIds(dto.roleIds);
+
+    const member = await this.serializableTransactionService.run((tx) =>
+      this.replaceMembershipRolesInTransaction(
+        tx,
+        organizationId,
+        membershipId,
+        dto.roleIds,
+      ),
+    );
+
+    return { member };
   }
 
   private async createRoleInTransaction(
@@ -213,6 +267,62 @@ export class OrganizationRolesManagementService {
     return deletedRole;
   }
 
+  private async replaceMembershipRolesInTransaction(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    membershipId: string,
+    roleIds: string[],
+  ): Promise<OrganizationMemberDto> {
+    const membership = await this.findMutableMembershipOrThrow(
+      tx,
+      organizationId,
+      membershipId,
+    );
+    const requestedRoles = await this.findReplacementRolesOrThrow(
+      tx,
+      organizationId,
+      roleIds,
+    );
+    const requestedRoleIds = new Set(requestedRoles.map((role) => role.id));
+    const currentCustomRoleIds = membership.roles
+      .filter((membershipRole) =>
+        this.isManagedCustomRole(membershipRole.role, organizationId),
+      )
+      .map((membershipRole) => membershipRole.role.id);
+    const currentCustomRoleIdSet = new Set(currentCustomRoleIds);
+    const roleIdsToRemove = currentCustomRoleIds.filter(
+      (roleId) => !requestedRoleIds.has(roleId),
+    );
+    const roleIdsToAdd = roleIds.filter(
+      (roleId) => !currentCustomRoleIdSet.has(roleId),
+    );
+
+    if (roleIdsToRemove.length > 0) {
+      await tx.membershipRole.deleteMany({
+        where: {
+          membershipId: membership.id,
+          roleId: { in: roleIdsToRemove },
+        },
+      });
+    }
+
+    if (roleIdsToAdd.length > 0) {
+      await tx.membershipRole.createMany({
+        data: roleIdsToAdd.map((roleId) => ({
+          membershipId: membership.id,
+          roleId,
+        })),
+      });
+    }
+
+    const updatedMembership = await tx.organizationMembership.findFirstOrThrow({
+      where: { id: membership.id, organizationId },
+      include: MEMBERSHIP_WITH_ROLES_INCLUDE,
+    });
+
+    return this.toMemberDto(updatedMembership);
+  }
+
   private async findTenantRoleOrThrow(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -232,6 +342,64 @@ export class OrganizationRolesManagementService {
     }
 
     return role;
+  }
+
+  private async findMutableMembershipOrThrow(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    membershipId: string,
+  ) {
+    const membership = await tx.organizationMembership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId,
+        status: { not: MembershipStatus.REMOVED },
+      },
+      include: MEMBERSHIP_WITH_ROLES_INCLUDE,
+    });
+
+    if (!membership) {
+      throw new AuthError(
+        'MEMBERSHIP_NOT_FOUND',
+        404,
+        'Membresía no encontrada',
+      );
+    }
+
+    return membership;
+  }
+
+  private async findReplacementRolesOrThrow(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    roleIds: string[],
+  ): Promise<Array<{ id: string; isSystem: boolean }>> {
+    if (roleIds.length === 0) {
+      return [];
+    }
+
+    const roles = await tx.role.findMany({
+      where: {
+        id: { in: roleIds },
+        organizationId,
+        scope: RoleScope.ORGANIZATION,
+      },
+      select: { id: true, isSystem: true },
+    });
+
+    if (roles.length !== roleIds.length) {
+      throw new AuthError('ROLE_NOT_FOUND', 404, 'Rol no encontrado');
+    }
+
+    if (roles.some((role) => role.isSystem)) {
+      throw new AuthError(
+        'ROLE_IS_SYSTEM',
+        409,
+        'Los roles del sistema no pueden asignarse mediante esta operación',
+      );
+    }
+
+    return roles;
   }
 
   private ensureCustomRole(role: { isSystem: boolean }): void {
@@ -276,6 +444,31 @@ export class OrganizationRolesManagementService {
         'permissionKeys no puede contener duplicados',
       );
     }
+  }
+
+  private ensureUniqueRoleIds(roleIds: string[]): void {
+    if (new Set(roleIds).size !== roleIds.length) {
+      throw new AuthError(
+        'VALIDATION_ERROR',
+        400,
+        'roleIds no puede contener duplicados',
+      );
+    }
+  }
+
+  private isManagedCustomRole(
+    role: {
+      organizationId: string;
+      scope: RoleScope;
+      isSystem: boolean;
+    },
+    organizationId: string,
+  ): boolean {
+    return (
+      role.organizationId === organizationId &&
+      role.scope === RoleScope.ORGANIZATION &&
+      !role.isSystem
+    );
   }
 
   private async nextAvailableRoleKey(
@@ -368,6 +561,21 @@ export class OrganizationRolesManagementService {
       permissions: role.permissions
         .map((rolePermission) => rolePermission.permission.key)
         .sort(),
+    };
+  }
+
+  private toMemberDto(
+    membership: Prisma.OrganizationMembershipGetPayload<{
+      include: typeof MEMBERSHIP_WITH_ROLES_INCLUDE;
+    }>,
+  ): OrganizationMemberDto {
+    return {
+      id: membership.id,
+      status: membership.status,
+      joinedAt: membership.joinedAt,
+      jobTitle: membership.jobTitle,
+      user: membership.user,
+      roles: membership.roles.map((membershipRole) => membershipRole.role.key),
     };
   }
 }

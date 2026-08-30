@@ -4,8 +4,8 @@
 - [x] 1.2 Add DTOs for permission catalog responses with `key` and `description`.
 - [x] 1.3 Add DTOs for custom role creation with required `name`, optional `description`, and required `permissionKeys` array.
 - [x] 1.4 Add DTOs for custom role update with optional `name`, optional `description`, and optional `permissionKeys` array.
-- [ ] 1.5 Add DTOs for membership custom role replacement with required `roleIds` array.
-- [ ] 1.6 Add validation for duplicate `permissionKeys`, duplicate `roleIds`, required fields, UUID role IDs, and forbidden client-owned fields through whitelist behavior.
+- [x] 1.5 Add DTOs for membership custom role replacement with required `roleIds` array.
+- [x] 1.6 Add validation for duplicate `permissionKeys`, duplicate `roleIds`, required fields, UUID role IDs, and forbidden client-owned fields through whitelist behavior.
 
 ## 2. Role Management Service
 
@@ -16,8 +16,8 @@
 - [x] 2.5 Implement atomic custom role creation with `scope = ORGANIZATION`, `isSystem = false`, and validated permission assignments.
 - [x] 2.6 Implement atomic custom role update that preserves `key`, `scope`, `organizationId`, and `isSystem`, and replaces permissions only when `permissionKeys` is provided.
 - [x] 2.7 Implement custom role deletion with tenant-scoped lookup, system-role rejection, `ROLE_IN_USE` precheck, and no silent cascade of membership assignments.
-- [ ] 2.8 Implement atomic replacement of only custom organization `MembershipRole` rows for a target tenant membership while preserving all system roles and ignoring no invalid input silently.
-- [ ] 2.9 Ensure role replacement rejects `OWNER`, `MEMBER`, other system roles, `PROJECT` roles, cross-tenant roles, missing roles, removed memberships, and cross-tenant memberships using the specified functional errors.
+- [x] 2.8 Implement atomic replacement of only custom organization `MembershipRole` rows for a target tenant membership while preserving all system roles and ignoring no invalid input silently.
+- [x] 2.9 Ensure role replacement rejects `OWNER`, `MEMBER`, other system roles, `PROJECT` roles, cross-tenant roles, missing roles, removed memberships, and cross-tenant memberships using the specified functional errors.
 
 ## 3. Controller And Module Wiring
 
@@ -27,8 +27,8 @@
 - [x] 3.4 Add `POST /api/organizations/current/roles` to `OrganizationsController` with `members.manage`.
 - [x] 3.5 Add `PATCH /api/organizations/current/roles/:roleId` to `OrganizationsController` with `members.manage`.
 - [x] 3.6 Add `DELETE /api/organizations/current/roles/:roleId` to `OrganizationsController` with `members.manage`.
-- [ ] 3.7 Add `PUT /api/organizations/current/members/:membershipId/roles` to `OrganizationsController` with `members.manage`.
-- [ ] 3.8 Keep using existing `JwtAuthGuard`, `CurrentTenant`, `RequirePermissions`, and `PermissionGuard` without creating a parallel guard.
+- [x] 3.7 Add `PUT /api/organizations/current/members/:membershipId/roles` to `OrganizationsController` with `members.manage`.
+- [x] 3.8 Keep using existing `JwtAuthGuard`, `CurrentTenant`, `RequirePermissions`, and `PermissionGuard` without creating a parallel guard.
 
 ## 4. Swagger And Error Contracts
 
@@ -46,18 +46,18 @@
 - [x] 5.4 Add service unit tests for duplicate `permissionKeys` and unknown permissions.
 - [x] 5.5 Add service unit tests for custom role creation retrying a `P2002` collision on `(organizationId, scope, key)` with a recalculated key candidate and returning `ROLE_ALREADY_EXISTS` after bounded attempts.
 - [x] 5.6 Add service unit tests for custom role update, description clearing, permission replacement, and key preservation.
-- [ ] 5.7 Add service unit tests for system role protection on update, delete, and membership role replacement.
+- [x] 5.7 Add service unit tests for system role protection on update, delete, and membership role replacement.
 - [x] 5.8 Add service unit tests for role-in-use delete rejection.
-- [ ] 5.9 Add service unit tests for tenant isolation in role update, role delete, and membership role replacement.
-- [ ] 5.10 Add service unit tests for custom membership role replacement preserving system roles and removing custom roles when `roleIds` is empty.
-- [ ] 5.11 Add service unit tests rejecting `PROJECT` roles in `MembershipRole` assignment through the new API.
+- [x] 5.9 Add service unit tests for tenant isolation in role update, role delete, and membership role replacement.
+- [x] 5.10 Add service unit tests for custom membership role replacement preserving system roles and removing custom roles when `roleIds` is empty.
+- [x] 5.11 Add service unit tests rejecting `PROJECT` roles in `MembershipRole` assignment through the new API.
 
 ## 6. Controller Tests
 
 - [x] 6.1 Extend controller metadata tests to verify `JwtAuthGuard` and `PermissionGuard` remain the guards for organization endpoints.
 - [x] 6.2 Verify `GET /roles` and `GET /permissions` require `members.read`.
-- [ ] 6.3 Verify `POST /roles`, `PATCH /roles/:roleId`, `DELETE /roles/:roleId`, and `PUT /members/:membershipId/roles` require `members.manage`.
-- [ ] 6.4 Verify controller methods pass `CurrentTenant`, route params, request bodies, and authenticated context only where needed to the role-management service.
+- [x] 6.3 Verify `POST /roles`, `PATCH /roles/:roleId`, `DELETE /roles/:roleId`, and `PUT /members/:membershipId/roles` require `members.manage`.
+- [x] 6.4 Verify controller methods pass `CurrentTenant`, route params, request bodies, and authenticated context only where needed to the role-management service.
 
 ## 7. E2E Tests
 

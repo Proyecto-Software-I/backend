@@ -29,6 +29,7 @@ describe('OrganizationsController', () => {
       createOrganizationRole: jest.fn().mockResolvedValue({ role: {} }),
       updateOrganizationRole: jest.fn().mockResolvedValue({ role: {} }),
       deleteOrganizationRole: jest.fn().mockResolvedValue({ role: {} }),
+      replaceMembershipRoles: jest.fn().mockResolvedValue({ member: {} }),
     } as unknown as OrganizationRolesManagementService;
 
     return {
@@ -122,6 +123,12 @@ describe('OrganizationsController', () => {
         OrganizationsController.prototype.deleteRole,
       ),
     ).toEqual(['members.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_KEY,
+        OrganizationsController.prototype.replaceMembershipRoles,
+      ),
+    ).toEqual(['members.manage']);
   });
 
   it('passes the current tenant to members service', async () => {
@@ -195,6 +202,19 @@ describe('OrganizationsController', () => {
     expect(rolesService.deleteOrganizationRole).toHaveBeenCalledWith(
       'org-1',
       'role-1',
+    );
+  });
+
+  it('passes current tenant, membership id and replacement DTO to roles service', async () => {
+    const { controller, rolesService } = makeController();
+    const dto = { roleIds: ['1b5f4c50-1f3d-4f4d-8e6a-0a7c0b1d2e3f'] };
+
+    await controller.replaceMembershipRoles('org-1', 'membership-1', dto);
+
+    expect(rolesService.replaceMembershipRoles).toHaveBeenCalledWith(
+      'org-1',
+      'membership-1',
+      dto,
     );
   });
 

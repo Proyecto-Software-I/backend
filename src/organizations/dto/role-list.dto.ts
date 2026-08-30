@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
@@ -109,4 +110,15 @@ export class UpdateOrganizationRoleDto {
   @ArrayUnique()
   @IsString({ each: true })
   permissionKeys?: string[];
+}
+
+export class ReplaceMembershipRolesDto {
+  @ApiProperty({
+    type: [String],
+    example: ['1b5f4c50-1f3d-4f4d-8e6a-0a7c0b1d2e3f'],
+  })
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  roleIds!: string[];
 }
