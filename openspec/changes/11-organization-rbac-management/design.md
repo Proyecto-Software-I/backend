@@ -42,6 +42,12 @@ Generate custom role `key` from `name` only at creation time using a lowercase s
 
 Alternative considered: accept client-provided keys. This is rejected because the issue requires backend-generated keys. Alternative considered: UUID-derived keys. This is less compatible with existing readable slug conventions.
 
+### Handle concurrent role key collisions locally
+
+Do not modify `SerializableTransactionService` globally to retry Prisma `P2002` for all backend transactions. Custom role creation should handle only the expected concurrent collision on the `Role` unique constraint `(organizationId, scope, key)`: if Prisma returns `P2002` for that target during custom role creation, start a new bounded creation attempt, re-read current roles for the active organization, calculate the next slug candidate such as `security-reviewer-2`, and retry role creation with that candidate. The retry loop must be finite. If bounded attempts are exhausted, return `409 ROLE_ALREADY_EXISTS` instead of propagating Prisma errors or returning `500`.
+
+Alternative considered: add locking, global retry behavior, or a dependency. This is rejected because the issue only needs a local controlled strategy for role-key uniqueness and the database unique constraint already protects correctness.
+
 ### Treat system roles as read-only and out of custom assignment
 
 List `OWNER` and `MEMBER`, but reject PATCH, DELETE, and membership-role replacement attempts that include any `isSystem = true` role ID. The replacement endpoint preserves existing system `MembershipRole` rows and modifies only custom organization-role rows for the active tenant.
@@ -82,7 +88,7 @@ Tests affected by this design are the `OrganizationsController` metadata/delegat
 
 - Race between role deletion and role assignment -> mitigate with a transaction around lookup, in-use check, and deletion; do not rely on cascade behavior as business logic.
 - Schema permits `MembershipRole` to reference `PROJECT` roles -> mitigate in the new API by validating requested role IDs and deleting/replacing only the custom `ORGANIZATION` subset managed by this API.
-- Stable slug key collisions -> mitigate with deterministic incremental suffix generation and return `ROLE_ALREADY_EXISTS` if a unique key cannot fit within the schema limit.
+- Stable slug key collisions -> mitigate with deterministic incremental suffix generation, local bounded retry on `Role` key `P2002`, and `ROLE_ALREADY_EXISTS` if a unique key cannot fit within the schema limit or bounded attempts are exhausted.
 - System role safety -> mitigate by treating any `isSystem = true` role as immutable and not assignable through custom role replacement.
 - Immediate authorization expectations -> rely on existing DB-driven `PermissionGuard` and `/auth/me` behavior; add tests proving custom role changes affect the next request with the same JWT.
 - Existing `/auth/me` Swagger mismatch -> leave unchanged because this issue does not require changing `/auth/me` contracts or Swagger documentation.

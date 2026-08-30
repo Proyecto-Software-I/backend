@@ -44,12 +44,13 @@
 - [ ] 5.2 Add service unit tests for permission catalog listing ordered by key.
 - [ ] 5.3 Add service unit tests for custom role creation, generated key stability, collision suffix behavior, empty permission arrays, and permission validation.
 - [ ] 5.4 Add service unit tests for duplicate `permissionKeys` and unknown permissions.
-- [ ] 5.5 Add service unit tests for custom role update, description clearing, permission replacement, and key preservation.
-- [ ] 5.6 Add service unit tests for system role protection on update, delete, and membership role replacement.
-- [ ] 5.7 Add service unit tests for role-in-use delete rejection.
-- [ ] 5.8 Add service unit tests for tenant isolation in role update, role delete, and membership role replacement.
-- [ ] 5.9 Add service unit tests for custom membership role replacement preserving system roles and removing custom roles when `roleIds` is empty.
-- [ ] 5.10 Add service unit tests rejecting `PROJECT` roles in `MembershipRole` assignment through the new API.
+- [ ] 5.5 Add service unit tests for custom role creation retrying a `P2002` collision on `(organizationId, scope, key)` with a recalculated key candidate and returning `ROLE_ALREADY_EXISTS` after bounded attempts.
+- [ ] 5.6 Add service unit tests for custom role update, description clearing, permission replacement, and key preservation.
+- [ ] 5.7 Add service unit tests for system role protection on update, delete, and membership role replacement.
+- [ ] 5.8 Add service unit tests for role-in-use delete rejection.
+- [ ] 5.9 Add service unit tests for tenant isolation in role update, role delete, and membership role replacement.
+- [ ] 5.10 Add service unit tests for custom membership role replacement preserving system roles and removing custom roles when `roleIds` is empty.
+- [ ] 5.11 Add service unit tests rejecting `PROJECT` roles in `MembershipRole` assignment through the new API.
 
 ## 6. Controller Tests
 
@@ -63,13 +64,15 @@
 - [ ] 7.1 Add E2E coverage showing MEMBER can list roles and permissions with `members.read`.
 - [ ] 7.2 Add E2E coverage showing MEMBER without `members.manage` receives `403 MEMBER_ACCESS_DENIED` for mutations.
 - [ ] 7.3 Add E2E coverage for OWNER creating, editing, and deleting an unused custom organization role.
-- [ ] 7.4 Add E2E coverage showing OWNER and MEMBER appear in role listing but cannot be edited or deleted.
-- [ ] 7.5 Add E2E coverage for assigned custom role delete returning `409 ROLE_IN_USE`.
-- [ ] 7.6 Add E2E coverage for cross-tenant role update, role delete, membership role replacement, and membership IDs returning non-enumerating errors.
-- [ ] 7.7 Add E2E coverage showing a valid `PROJECT` role ID cannot be assigned through `MembershipRole` by the new API.
-- [ ] 7.8 Add E2E coverage showing multiple roles produce union permissions without duplicates in `/auth/me`.
-- [ ] 7.9 Add E2E coverage showing removing a custom role assignment or custom role permission affects the next protected request with the same JWT, without logout or refresh.
-- [ ] 7.10 Add E2E coverage confirming JWT payloads continue to omit roles and permissions.
+- [ ] 7.4 Add E2E happy-path coverage that creates a custom role, assigns it with `PUT /organizations/current/members/:membershipId/roles`, verifies `GET /organizations/current/members` shows the custom role, removes it with `PUT` using `roleIds: []`, verifies `GET /members` no longer shows it, and verifies a preexisting `MEMBER` role is preserved without creating a universal MEMBER invariant.
+- [ ] 7.5 Add E2E coverage showing OWNER and MEMBER appear in role listing but cannot be edited or deleted.
+- [ ] 7.6 Add E2E coverage for assigned custom role delete returning `409 ROLE_IN_USE`.
+- [ ] 7.7 Add E2E coverage for cross-tenant role update, role delete, membership role replacement, and membership IDs returning non-enumerating errors.
+- [ ] 7.8 Add E2E coverage showing a valid `PROJECT` role ID cannot be assigned through `MembershipRole` by the new API.
+- [ ] 7.9 Add E2E coverage showing multiple roles produce union permissions without duplicates in `/auth/me`.
+- [ ] 7.10 Add E2E coverage showing removing a custom role assignment or custom role permission affects the next protected request with the same JWT, without logout or refresh.
+- [ ] 7.11 Add E2E coverage confirming JWT payloads continue to omit roles and permissions.
+- [ ] 7.12 Add concurrent E2E coverage showing two custom role creations with the same name do not return `500` and produce controlled unique-key behavior through successful suffixed keys or bounded `409 ROLE_ALREADY_EXISTS`.
 
 ## 8. Verification
 
