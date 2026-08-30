@@ -44,6 +44,39 @@ function p2002RoleKeyError(): Prisma.PrismaClientKnownRequestError {
   });
 }
 
+function p2002RoleKeyConstraintNameError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target: 'Role_organizationId_scope_key_key' },
+  });
+}
+
+function p2002RoleKeyDriverAdapterError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: {
+      driverAdapterError: {
+        cause: {
+          originalMessage:
+            'llave duplicada viola restricción de unicidad «Role_organizationId_scope_key_key»',
+        },
+      },
+    },
+  });
+}
+
+function p2034SerializableConflictError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Transaction failed due to a write conflict or a deadlock',
+    {
+      code: 'P2034',
+      clientVersion: 'test',
+    },
+  );
+}
+
 function role(overrides: Record<string, unknown> = {}) {
   return {
     id: 'role-1',
@@ -415,6 +448,66 @@ describe('OrganizationRolesManagementService', () => {
       .mockResolvedValueOnce(null);
     tx.role.create
       .mockRejectedValueOnce(p2002RoleKeyError())
+      .mockResolvedValueOnce(role({ key: 'security-reviewer-2' }));
+
+    await expect(
+      service.createOrganizationRole('org-1', {
+        name: 'Security reviewer',
+        permissionKeys: [],
+      }),
+    ).resolves.toMatchObject({ role: { key: 'security-reviewer-2' } });
+    const secondCreateCall = getRoleCreateCall(tx.role.create, 1);
+    expect(secondCreateCall.data.key).toBe('security-reviewer-2');
+  });
+
+  it('retries locally when Prisma reports the role key P2002 as a constraint name', async () => {
+    const { service, prisma, tx } = makeService();
+    prisma.role.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'role-1' })
+      .mockResolvedValueOnce(null);
+    tx.role.create
+      .mockRejectedValueOnce(p2002RoleKeyConstraintNameError())
+      .mockResolvedValueOnce(role({ key: 'security-reviewer-2' }));
+
+    await expect(
+      service.createOrganizationRole('org-1', {
+        name: 'Security reviewer',
+        permissionKeys: [],
+      }),
+    ).resolves.toMatchObject({ role: { key: 'security-reviewer-2' } });
+    const secondCreateCall = getRoleCreateCall(tx.role.create, 1);
+    expect(secondCreateCall.data.key).toBe('security-reviewer-2');
+  });
+
+  it('retries locally when the driver adapter reports the role key P2002 constraint', async () => {
+    const { service, prisma, tx } = makeService();
+    prisma.role.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'role-1' })
+      .mockResolvedValueOnce(null);
+    tx.role.create
+      .mockRejectedValueOnce(p2002RoleKeyDriverAdapterError())
+      .mockResolvedValueOnce(role({ key: 'security-reviewer-2' }));
+
+    await expect(
+      service.createOrganizationRole('org-1', {
+        name: 'Security reviewer',
+        permissionKeys: [],
+      }),
+    ).resolves.toMatchObject({ role: { key: 'security-reviewer-2' } });
+    const secondCreateCall = getRoleCreateCall(tx.role.create, 1);
+    expect(secondCreateCall.data.key).toBe('security-reviewer-2');
+  });
+
+  it('retries locally when custom role creation hits a serializable conflict', async () => {
+    const { service, prisma, tx } = makeService();
+    prisma.role.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'role-1' })
+      .mockResolvedValueOnce(null);
+    tx.role.create
+      .mockRejectedValueOnce(p2034SerializableConflictError())
       .mockResolvedValueOnce(role({ key: 'security-reviewer-2' }));
 
     await expect(

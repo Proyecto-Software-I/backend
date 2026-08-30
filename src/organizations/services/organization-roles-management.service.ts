@@ -108,14 +108,14 @@ export class OrganizationRolesManagementService {
 
         return { role };
       } catch (error) {
-        if (
-          !this.isRoleKeyUniqueCollision(error) ||
-          attempt === MAX_ROLE_KEY_ATTEMPTS
-        ) {
-          if (this.isRoleKeyUniqueCollision(error)) {
-            this.throwRoleAlreadyExists();
-          }
+        const shouldRetryRoleCreation =
+          this.isRoleKeyUniqueCollision(error) ||
+          this.isSerializableConflict(error);
+        if (!shouldRetryRoleCreation) {
           throw error;
+        }
+        if (attempt === MAX_ROLE_KEY_ATTEMPTS) {
+          this.throwRoleAlreadyExists();
         }
       }
     }
@@ -516,14 +516,14 @@ export class OrganizationRolesManagementService {
   }
 
   private isRoleKeyUniqueCollision(error: unknown): boolean {
-    if (
-      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-      error.code !== 'P2002'
-    ) {
+    if (this.prismaErrorCode(error) !== 'P2002') {
       return false;
     }
 
-    const target = error.meta?.['target'];
+    const target = (error as { meta?: Record<string, unknown> }).meta?.[
+      'target'
+    ];
+    const constraint = this.prismaDriverConstraint(error);
     if (Array.isArray(target)) {
       return ['organizationId', 'scope', 'key'].every((field) =>
         target.includes(field),
@@ -531,11 +531,48 @@ export class OrganizationRolesManagementService {
     }
 
     return (
-      typeof target === 'string' &&
-      ['organizationId', 'scope', 'key'].every((field) =>
-        target.includes(field),
-      )
+      (typeof target === 'string' &&
+        (['organizationId', 'scope', 'key'].every((field) =>
+          target.includes(field),
+        ) ||
+          target === 'Role_organizationId_scope_key_key')) ||
+      constraint === 'Role_organizationId_scope_key_key'
     );
+  }
+
+  private isSerializableConflict(error: unknown): boolean {
+    return this.prismaErrorCode(error) === 'P2034';
+  }
+
+  private prismaErrorCode(error: unknown): string | undefined {
+    if (typeof error !== 'object' || error === null || !('code' in error)) {
+      return undefined;
+    }
+
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' ? code : undefined;
+  }
+
+  private prismaDriverConstraint(error: unknown): string | undefined {
+    const meta = (error as { meta?: Record<string, unknown> }).meta;
+    const driverAdapterError = meta?.['driverAdapterError'];
+    const cause =
+      typeof driverAdapterError === 'object' && driverAdapterError !== null
+        ? (driverAdapterError as { cause?: unknown }).cause
+        : undefined;
+    if (typeof cause !== 'object' || cause === null) {
+      return undefined;
+    }
+
+    const originalMessage = (cause as { originalMessage?: unknown })
+      .originalMessage;
+    if (typeof originalMessage !== 'string') {
+      return undefined;
+    }
+
+    return originalMessage.includes('Role_organizationId_scope_key_key')
+      ? 'Role_organizationId_scope_key_key'
+      : undefined;
   }
 
   private throwRoleAlreadyExists(): never {

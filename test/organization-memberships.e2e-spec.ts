@@ -45,11 +45,31 @@ type MembersListBody = {
     roles: string[];
   }>;
 };
+type OrganizationRoleBody = {
+  role: OrganizationRoleItem;
+};
+type OrganizationRolesBody = {
+  roles: OrganizationRoleItem[];
+};
+type OrganizationRoleItem = {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  scope: RoleScope;
+  isSystem: boolean;
+  permissions: string[];
+};
+type PermissionCatalogBody = {
+  permissions: Array<{ key: string; description: string | null }>;
+};
 
 const REQUIRED_PERMISSIONS = [
   'organization.read',
   'members.read',
   'members.manage',
+  'analysis.read',
+  'audit.read',
 ] as const;
 
 describe('Organization memberships and invitations (e2e)', () => {
@@ -361,6 +381,83 @@ describe('Organization memberships and invitations (e2e)', () => {
     }
 
     return [...permissions].sort();
+  }
+
+  async function createMember(owner: AuthResponse, label: string) {
+    const created = await createInvitation(owner, email(label));
+    const response = await request(server())
+      .post('/api/auth/register')
+      .send({
+        invitationToken: created.token,
+        password,
+        firstName: 'Member',
+        lastName: label,
+      })
+      .expect(201);
+
+    return response.body as AuthResponse;
+  }
+
+  async function findRole(
+    organizationId: string,
+    key: string,
+    scope = RoleScope.ORGANIZATION,
+  ) {
+    return prisma.role.findUniqueOrThrow({
+      where: {
+        organizationId_scope_key: {
+          organizationId,
+          scope,
+          key,
+        },
+      },
+    });
+  }
+
+  async function createRoleFixture(params: {
+    organizationId: string;
+    key: string;
+    name: string;
+    permissionKeys?: string[];
+    scope?: RoleScope;
+    isSystem?: boolean;
+  }) {
+    const permissions = await prisma.permission.findMany({
+      where: { key: { in: params.permissionKeys ?? [] } },
+      select: { id: true },
+    });
+
+    return prisma.role.create({
+      data: {
+        organizationId: params.organizationId,
+        key: params.key,
+        name: params.name,
+        scope: params.scope ?? RoleScope.ORGANIZATION,
+        isSystem: params.isSystem ?? false,
+        permissions:
+          permissions.length > 0
+            ? {
+                create: permissions.map((permission) => ({
+                  permissionId: permission.id,
+                })),
+              }
+            : undefined,
+      },
+    });
+  }
+
+  async function assignRole(membershipId: string, roleId: string) {
+    await prisma.membershipRole.create({ data: { membershipId, roleId } });
+  }
+
+  function expectFunctionalError(
+    body: ErrorBody,
+    statusCode: number,
+    code: string,
+  ) {
+    expect(Object.keys(body).sort()).toEqual(['code', 'message', 'statusCode']);
+    expect(body).toMatchObject({ statusCode, code });
+    expect(typeof body.message).toBe('string');
   }
 
   it('register normal persists user, credential, organization, roles, session, DB-driven permissions, and JWT shape', async () => {
@@ -1412,6 +1509,487 @@ describe('Organization memberships and invitations (e2e)', () => {
         })
       ).status,
     ).toBe(InvitationStatus.ACCEPTED);
+  });
+
+  it('allows MEMBER to list roles and permissions, but denies all role mutations without members.manage', async () => {
+    const owner = await registerOwner('rbac-read-owner');
+    const otherOwner = await registerOwner('rbac-read-other-owner');
+    const member = await createMember(owner, 'rbac-read-member');
+    const organizationId = owner.activeOrganization?.id ?? '';
+    const customRole = await createRoleFixture({
+      organizationId,
+      key: `${prefix}-rbac-read-custom`,
+      name: 'RBAC Read Custom',
+      permissionKeys: ['members.read'],
+    });
+    const otherTenantRole = await createRoleFixture({
+      organizationId: otherOwner.activeOrganization?.id ?? '',
+      key: `${prefix}-rbac-read-other`,
+      name: 'RBAC Read Other',
+    });
+    const projectRole = await createRoleFixture({
+      organizationId,
+      key: `${prefix}-rbac-read-project`,
+      name: 'RBAC Read Project',
+      scope: RoleScope.PROJECT,
+    });
+
+    const rolesResponse = await request(server())
+      .get('/api/organizations/current/roles')
+      .set(auth(member.auth.accessToken))
+      .expect(200);
+    const rolesBody = rolesResponse.body as OrganizationRolesBody;
+    expect(rolesBody.roles.map((role) => role.key)).toEqual(
+      expect.arrayContaining(['OWNER', 'MEMBER', customRole.key]),
+    );
+    expect(rolesBody.roles.map((role) => role.id)).not.toContain(
+      otherTenantRole.id,
+    );
+    expect(rolesBody.roles.map((role) => role.id)).not.toContain(
+      projectRole.id,
+    );
+    expect(
+      rolesBody.roles.every((role) => role.scope === RoleScope.ORGANIZATION),
+    ).toBe(true);
+
+    const permissionsResponse = await request(server())
+      .get('/api/organizations/current/permissions')
+      .set(auth(member.auth.accessToken))
+      .expect(200);
+    const permissionsBody = permissionsResponse.body as PermissionCatalogBody;
+    expect(
+      permissionsBody.permissions.map((permission) => permission.key),
+    ).toEqual(expect.arrayContaining(['members.read', 'organization.read']));
+
+    const deniedRequests = [
+      () =>
+        request(server())
+          .post('/api/organizations/current/roles')
+          .set(auth(member.auth.accessToken))
+          .send({ name: 'Denied Role', permissionKeys: [] }),
+      () =>
+        request(server())
+          .patch(`/api/organizations/current/roles/${customRole.id}`)
+          .set(auth(member.auth.accessToken))
+          .send({ name: 'Denied Update' }),
+      () =>
+        request(server())
+          .delete(`/api/organizations/current/roles/${customRole.id}`)
+          .set(auth(member.auth.accessToken)),
+      () =>
+        request(server())
+          .put(
+            `/api/organizations/current/members/${member.activeMembership?.id}/roles`,
+          )
+          .set(auth(member.auth.accessToken))
+          .send({ roleIds: [customRole.id] }),
+    ];
+    for (const deniedRequest of deniedRequests) {
+      await deniedRequest()
+        .expect(403)
+        .expect(({ body }: { body: ErrorBody }) => {
+          expectFunctionalError(body, 403, 'MEMBER_ACCESS_DENIED');
+        });
+    }
+  });
+
+  it('lets OWNER create, update, and delete an unused custom organization role', async () => {
+    const owner = await registerOwner('rbac-crud-owner');
+    const organizationId = owner.activeOrganization?.id ?? '';
+
+    const created = await request(server())
+      .post('/api/organizations/current/roles')
+      .set(auth(owner.auth.accessToken))
+      .send({
+        name: 'Security Reviewer',
+        description: 'Can review security and audit data.',
+        permissionKeys: ['analysis.read', 'audit.read'],
+      })
+      .expect(201);
+    const createdRole = (created.body as OrganizationRoleBody).role;
+    expect(createdRole).toMatchObject({
+      name: 'Security Reviewer',
+      description: 'Can review security and audit data.',
+      scope: RoleScope.ORGANIZATION,
+      isSystem: false,
+      permissions: ['analysis.read', 'audit.read'],
+    });
+    expect(createdRole.key).toBe('security-reviewer');
+    await expect(
+      prisma.role.findFirst({
+        where: {
+          id: createdRole.id,
+          organizationId,
+          scope: RoleScope.ORGANIZATION,
+          isSystem: false,
+        },
+      }),
+    ).resolves.not.toBeNull();
+
+    const updated = await request(server())
+      .patch(`/api/organizations/current/roles/${createdRole.id}`)
+      .set(auth(owner.auth.accessToken))
+      .send({
+        name: 'Security and Audit Reviewer',
+        description: 'Updated description.',
+        permissionKeys: ['members.read'],
+      })
+      .expect(200);
+    const updatedRole = (updated.body as OrganizationRoleBody).role;
+    expect(updatedRole).toMatchObject({
+      name: 'Security and Audit Reviewer',
+      description: 'Updated description.',
+      key: createdRole.key,
+      permissions: ['members.read'],
+    });
+
+    const deleted = await request(server())
+      .delete(`/api/organizations/current/roles/${createdRole.id}`)
+      .set(auth(owner.auth.accessToken))
+      .expect(200);
+    expect((deleted.body as OrganizationRoleBody).role).toMatchObject({
+      id: createdRole.id,
+      key: createdRole.key,
+    });
+    await expect(
+      prisma.role.findUnique({ where: { id: createdRole.id } }),
+    ).resolves.toBeNull();
+  });
+
+  it('assigns and removes custom roles while preserving a preexisting MEMBER role', async () => {
+    const owner = await registerOwner('rbac-assign-owner');
+    const member = await createMember(owner, 'rbac-assign-member');
+    const created = await request(server())
+      .post('/api/organizations/current/roles')
+      .set(auth(owner.auth.accessToken))
+      .send({ name: 'Temporary Reviewer', permissionKeys: ['members.read'] })
+      .expect(201);
+    const customRole = (created.body as OrganizationRoleBody).role;
+    const membershipId = member.activeMembership?.id ?? '';
+    expect(
+      (
+        await membershipFor(member.user.id, owner.activeOrganization?.id ?? '')
+      ).roles.map((membershipRole) => membershipRole.role.key),
+    ).toEqual(['MEMBER']);
+
+    await request(server())
+      .put(`/api/organizations/current/members/${membershipId}/roles`)
+      .set(auth(owner.auth.accessToken))
+      .send({ roleIds: [customRole.id] })
+      .expect(200)
+      .expect(({ body }: { body: MembersListBody['members'][number] }) => {
+        expect(
+          (body as unknown as { member: { roles: string[] } }).member.roles,
+        ).toEqual(expect.arrayContaining(['MEMBER', customRole.key]));
+      });
+    const assignedMembers = await request(server())
+      .get('/api/organizations/current/members')
+      .set(auth(owner.auth.accessToken))
+      .expect(200);
+    const assignedMember = (
+      assignedMembers.body as MembersListBody
+    ).members.find((current) => current.id === membershipId);
+    expect(assignedMember?.roles).toEqual(
+      expect.arrayContaining(['MEMBER', customRole.key]),
+    );
+
+    await request(server())
+      .put(`/api/organizations/current/members/${membershipId}/roles`)
+      .set(auth(owner.auth.accessToken))
+      .send({ roleIds: [] })
+      .expect(200);
+    const removedMembers = await request(server())
+      .get('/api/organizations/current/members')
+      .set(auth(owner.auth.accessToken))
+      .expect(200);
+    const removedMember = (removedMembers.body as MembersListBody).members.find(
+      (current) => current.id === membershipId,
+    );
+    expect(removedMember?.roles).toContain('MEMBER');
+    expect(removedMember?.roles).not.toContain(customRole.key);
+  });
+
+  it('lists system roles but rejects patch and delete for OWNER and MEMBER', async () => {
+    const owner = await registerOwner('rbac-system-owner');
+    const organizationId = owner.activeOrganization?.id ?? '';
+    const ownerRole = await findRole(organizationId, 'OWNER');
+    const memberRole = await findRole(organizationId, 'MEMBER');
+
+    const rolesResponse = await request(server())
+      .get('/api/organizations/current/roles')
+      .set(auth(owner.auth.accessToken))
+      .expect(200);
+    const roles = (rolesResponse.body as OrganizationRolesBody).roles;
+    expect(roles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'OWNER', isSystem: true }),
+        expect.objectContaining({ key: 'MEMBER', isSystem: true }),
+      ]),
+    );
+
+    for (const systemRole of [ownerRole, memberRole]) {
+      await request(server())
+        .patch(`/api/organizations/current/roles/${systemRole.id}`)
+        .set(auth(owner.auth.accessToken))
+        .send({ name: `Updated ${systemRole.key}` })
+        .expect(409)
+        .expect(({ body }: { body: ErrorBody }) => {
+          expectFunctionalError(body, 409, 'ROLE_IS_SYSTEM');
+        });
+      await request(server())
+        .delete(`/api/organizations/current/roles/${systemRole.id}`)
+        .set(auth(owner.auth.accessToken))
+        .expect(409)
+        .expect(({ body }: { body: ErrorBody }) => {
+          expectFunctionalError(body, 409, 'ROLE_IS_SYSTEM');
+        });
+    }
+  });
+
+  it('rejects deleting an assigned custom role with ROLE_IN_USE', async () => {
+    const owner = await registerOwner('rbac-in-use-owner');
+    const member = await createMember(owner, 'rbac-in-use-member');
+    const customRole = (
+      await request(server())
+        .post('/api/organizations/current/roles')
+        .set(auth(owner.auth.accessToken))
+        .send({ name: 'Assigned Reviewer', permissionKeys: ['members.read'] })
+        .expect(201)
+    ).body as OrganizationRoleBody;
+
+    await request(server())
+      .put(
+        `/api/organizations/current/members/${member.activeMembership?.id}/roles`,
+      )
+      .set(auth(owner.auth.accessToken))
+      .send({ roleIds: [customRole.role.id] })
+      .expect(200);
+    await request(server())
+      .delete(`/api/organizations/current/roles/${customRole.role.id}`)
+      .set(auth(owner.auth.accessToken))
+      .expect(409)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expectFunctionalError(body, 409, 'ROLE_IN_USE');
+      });
+    await expect(
+      prisma.membershipRole.count({ where: { roleId: customRole.role.id } }),
+    ).resolves.toBe(1);
+  });
+
+  it('hides cross-tenant roles and memberships behind not-found role administration errors', async () => {
+    const ownerA = await registerOwner('rbac-tenant-a');
+    const ownerB = await registerOwner('rbac-tenant-b');
+    const memberA = await createMember(ownerA, 'rbac-tenant-member-a');
+    const roleB = await createRoleFixture({
+      organizationId: ownerB.activeOrganization?.id ?? '',
+      key: `${prefix}-tenant-b-role`,
+      name: 'Tenant B Role',
+      permissionKeys: ['members.read'],
+    });
+
+    await request(server())
+      .patch(`/api/organizations/current/roles/${roleB.id}`)
+      .set(auth(ownerA.auth.accessToken))
+      .send({ name: 'Cross Tenant Update' })
+      .expect(404)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expectFunctionalError(body, 404, 'ROLE_NOT_FOUND');
+      });
+    await request(server())
+      .delete(`/api/organizations/current/roles/${roleB.id}`)
+      .set(auth(ownerA.auth.accessToken))
+      .expect(404)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expectFunctionalError(body, 404, 'ROLE_NOT_FOUND');
+      });
+    await request(server())
+      .put(
+        `/api/organizations/current/members/${ownerB.activeMembership?.id}/roles`,
+      )
+      .set(auth(ownerA.auth.accessToken))
+      .send({ roleIds: [] })
+      .expect(404)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expectFunctionalError(body, 404, 'MEMBERSHIP_NOT_FOUND');
+      });
+    await request(server())
+      .put(
+        `/api/organizations/current/members/${memberA.activeMembership?.id}/roles`,
+      )
+      .set(auth(ownerA.auth.accessToken))
+      .send({ roleIds: [roleB.id] })
+      .expect(404)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expectFunctionalError(body, 404, 'ROLE_NOT_FOUND');
+      });
+  });
+
+  it('rejects PROJECT roles in membership role replacement without creating MembershipRole rows', async () => {
+    const owner = await registerOwner('rbac-project-owner');
+    const member = await createMember(owner, 'rbac-project-member');
+    const projectRole = await createRoleFixture({
+      organizationId: owner.activeOrganization?.id ?? '',
+      key: `${prefix}-project-role`,
+      name: 'Project Role',
+      scope: RoleScope.PROJECT,
+    });
+
+    await request(server())
+      .put(
+        `/api/organizations/current/members/${member.activeMembership?.id}/roles`,
+      )
+      .set(auth(owner.auth.accessToken))
+      .send({ roleIds: [projectRole.id] })
+      .expect(404)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expectFunctionalError(body, 404, 'ROLE_NOT_FOUND');
+      });
+    await expect(
+      prisma.membershipRole.count({
+        where: {
+          membershipId: member.activeMembership?.id,
+          roleId: projectRole.id,
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('returns effective permission union without duplicates in /auth/me for multiple custom roles', async () => {
+    const owner = await registerOwner('rbac-union-owner');
+    const member = await createMember(owner, 'rbac-union-member');
+    const organizationId = owner.activeOrganization?.id ?? '';
+    const roleA = await createRoleFixture({
+      organizationId,
+      key: `${prefix}-union-a`,
+      name: 'Union A',
+      permissionKeys: ['analysis.read', 'members.read'],
+    });
+    const roleB = await createRoleFixture({
+      organizationId,
+      key: `${prefix}-union-b`,
+      name: 'Union B',
+      permissionKeys: ['members.read', 'audit.read'],
+    });
+    await assignRole(member.activeMembership?.id ?? '', roleA.id);
+    await assignRole(member.activeMembership?.id ?? '', roleB.id);
+
+    const me = await request(server())
+      .get('/api/auth/me')
+      .set(auth(member.auth.accessToken))
+      .expect(200);
+    const permissions =
+      (me.body as AuthResponse).activeMembership?.permissions ?? [];
+    expect(permissions).toEqual(
+      expect.arrayContaining(['analysis.read', 'members.read', 'audit.read']),
+    );
+    expect(permissions.filter((key) => key === 'members.read')).toHaveLength(1);
+  });
+
+  it('uses the same JWT to enforce immediate authorization revocation after custom role removal', async () => {
+    const owner = await registerOwner('rbac-revoke-owner');
+    await createMember(owner, 'rbac-revoke-member');
+    const memberLogin = await login('rbac-revoke-member');
+    const organizationId = owner.activeOrganization?.id ?? '';
+    const manageRole = await createRoleFixture({
+      organizationId,
+      key: `${prefix}-revoke-manage`,
+      name: 'Revocable Manager',
+      permissionKeys: ['members.manage'],
+    });
+    await request(server())
+      .put(
+        `/api/organizations/current/members/${memberLogin.activeMembership?.id}/roles`,
+      )
+      .set(auth(owner.auth.accessToken))
+      .send({ roleIds: [manageRole.id] })
+      .expect(200);
+    const sameToken = memberLogin.auth.accessToken;
+
+    await request(server())
+      .post('/api/organizations/current/roles')
+      .set(auth(sameToken))
+      .send({ name: 'Same JWT Allowed', permissionKeys: [] })
+      .expect(201);
+    await request(server())
+      .put(
+        `/api/organizations/current/members/${memberLogin.activeMembership?.id}/roles`,
+      )
+      .set(auth(owner.auth.accessToken))
+      .send({ roleIds: [] })
+      .expect(200);
+    expect(memberLogin.auth.accessToken).toBe(sameToken);
+    await request(server())
+      .post('/api/organizations/current/roles')
+      .set(auth(sameToken))
+      .send({ name: 'Same JWT Denied', permissionKeys: [] })
+      .expect(403)
+      .expect(({ body }: { body: ErrorBody }) => {
+        expectFunctionalError(body, 403, 'MEMBER_ACCESS_DENIED');
+      });
+    expect(memberLogin.auth.accessToken).toBe(sameToken);
+  });
+
+  it('keeps roles and permissions out of JWT payloads', async () => {
+    const owner = await registerOwner('rbac-jwt-owner');
+    const decoded = decodeJwt(owner.auth.accessToken);
+
+    expect(decoded.sub).toBe(owner.user.id);
+    expect(decoded.sid).toEqual(expect.any(String));
+    expect(decoded.org).toBe(owner.activeOrganization?.id);
+    expect(decoded).not.toHaveProperty('roles');
+    expect(decoded).not.toHaveProperty('permissions');
+    expect(decoded).not.toHaveProperty('activeMembership');
+    expect(decoded).not.toHaveProperty('memberPermissions');
+  });
+
+  it('handles concurrent custom role creation with controlled unique-key behavior', async () => {
+    const owner = await registerOwner('rbac-concurrent-owner');
+    const requests = await Promise.all([
+      request(server())
+        .post('/api/organizations/current/roles')
+        .set(auth(owner.auth.accessToken))
+        .send({ name: 'Concurrent Security Reviewer', permissionKeys: [] }),
+      request(server())
+        .post('/api/organizations/current/roles')
+        .set(auth(owner.auth.accessToken))
+        .send({ name: 'Concurrent Security Reviewer', permissionKeys: [] }),
+    ]);
+
+    expect(requests.map((response) => response.status)).not.toContain(500);
+    const createdRoles = requests
+      .filter((response) => response.status === 201)
+      .map((response) => (response.body as OrganizationRoleBody).role);
+    const conflictResponses = requests.filter(
+      (response) => response.status === 409,
+    );
+    for (const response of conflictResponses) {
+      expectFunctionalError(
+        response.body as ErrorBody,
+        409,
+        'ROLE_ALREADY_EXISTS',
+      );
+    }
+    expect(createdRoles.length + conflictResponses.length).toBe(2);
+    if (createdRoles.length === 2) {
+      expect(createdRoles[0].id).not.toBe(createdRoles[1].id);
+      expect(createdRoles[0].key).not.toBe(createdRoles[1].key);
+    }
+    for (const role of createdRoles) {
+      expect(role.key.length).toBeLessThanOrEqual(100);
+      expect(role).toMatchObject({
+        scope: RoleScope.ORGANIZATION,
+        isSystem: false,
+      });
+      await expect(
+        prisma.role.findFirst({
+          where: {
+            id: role.id,
+            organizationId: owner.activeOrganization?.id,
+            scope: RoleScope.ORGANIZATION,
+          },
+        }),
+      ).resolves.not.toBeNull();
+    }
   });
 
   it('exposes Auth activeMembership permissions in register, login, select-organization, and me', async () => {
