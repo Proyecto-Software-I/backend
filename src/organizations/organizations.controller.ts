@@ -6,11 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -33,8 +36,18 @@ import {
   OrganizationMembersResponseDto,
   UpdateMembershipStatusDto,
 } from './dto/member-list.dto';
+import {
+  CreateOrganizationRoleDto,
+  OrganizationRoleDto,
+  OrganizationRoleResponseDto,
+  OrganizationRolesResponseDto,
+  PermissionCatalogResponseDto,
+  ReplaceMembershipRolesDto,
+  UpdateOrganizationRoleDto,
+} from './dto/role-list.dto';
 import { InvitationsService } from './services/invitations.service';
 import { MembershipsService } from './services/memberships.service';
+import { OrganizationRolesManagementService } from './services/organization-roles-management.service';
 
 @ApiTags('organizations')
 @ApiBearerAuth()
@@ -44,6 +57,7 @@ export class OrganizationsController {
   constructor(
     private readonly membershipsService: MembershipsService,
     private readonly invitationsService: InvitationsService,
+    private readonly rolesService: OrganizationRolesManagementService,
   ) {}
 
   @Get('members')
@@ -84,6 +98,221 @@ export class OrganizationsController {
     @CurrentTenant() organizationId: string,
   ): Promise<OrganizationInvitationsResponseDto> {
     return this.invitationsService.listCurrentInvitations(organizationId);
+  }
+
+  @Get('roles')
+  @RequirePermissions('members.read')
+  @ApiOperation({
+    summary: 'Listar roles de la organización activa',
+    description:
+      'Requiere members.read. Lista roles ORGANIZATION del tenant activo.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Roles ORGANIZATION de la organización activa',
+    type: OrganizationRolesResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  async listRoles(
+    @CurrentTenant() organizationId: string,
+  ): Promise<OrganizationRolesResponseDto> {
+    return this.rolesService.listOrganizationRoles(organizationId);
+  }
+
+  @Get('permissions')
+  @RequirePermissions('members.read')
+  @ApiOperation({
+    summary: 'Listar catálogo global de permisos',
+    description:
+      'Requiere members.read. Devuelve el catálogo global de permisos.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Catálogo global de permisos',
+    type: PermissionCatalogResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  async listPermissions(): Promise<PermissionCatalogResponseDto> {
+    return this.rolesService.listPermissionCatalog();
+  }
+
+  @Post('roles')
+  @RequirePermissions('members.manage')
+  @ApiOperation({
+    summary: 'Crear rol personalizado de la organización activa',
+    description:
+      'Requiere members.manage. organizationId, scope, key e isSystem son definidos por el backend.',
+  })
+  @ApiBody({ type: CreateOrganizationRoleDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Rol personalizado creado',
+    type: OrganizationRoleResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Errores posibles: VALIDATION_ERROR, PERMISSION_NOT_FOUND. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Error posible: ROLE_ALREADY_EXISTS. Formato: { statusCode, code, message }',
+  })
+  async createRole(
+    @CurrentTenant() organizationId: string,
+    @Body() dto: CreateOrganizationRoleDto,
+  ): Promise<{ role: OrganizationRoleDto }> {
+    return this.rolesService.createOrganizationRole(organizationId, dto);
+  }
+
+  @Patch('roles/:roleId')
+  @RequirePermissions('members.manage')
+  @ApiOperation({
+    summary: 'Actualizar rol personalizado de la organización activa',
+    description:
+      'Requiere members.manage. Solo name, description y permissionKeys son editables; key, scope, isSystem y organizationId no vienen del cliente.',
+  })
+  @ApiParam({ name: 'roleId', description: 'ID del rol personalizado' })
+  @ApiBody({ type: UpdateOrganizationRoleDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Rol personalizado actualizado',
+    type: OrganizationRoleResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Errores posibles: VALIDATION_ERROR, PERMISSION_NOT_FOUND. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Error posible: ROLE_NOT_FOUND. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Error posible: ROLE_IS_SYSTEM. Formato: { statusCode, code, message }',
+  })
+  async updateRole(
+    @CurrentTenant() organizationId: string,
+    @Param('roleId') roleId: string,
+    @Body() dto: UpdateOrganizationRoleDto,
+  ): Promise<{ role: OrganizationRoleDto }> {
+    return this.rolesService.updateOrganizationRole(
+      organizationId,
+      roleId,
+      dto,
+    );
+  }
+
+  @Delete('roles/:roleId')
+  @RequirePermissions('members.manage')
+  @ApiOperation({
+    summary: 'Eliminar rol personalizado de la organización activa',
+    description:
+      'Requiere members.manage. Solo elimina roles personalizados ORGANIZATION no asignados.',
+  })
+  @ApiParam({ name: 'roleId', description: 'ID del rol personalizado' })
+  @ApiResponse({
+    status: 200,
+    description: 'Rol personalizado eliminado',
+    type: OrganizationRoleResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Error posible: ROLE_NOT_FOUND. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Errores posibles: ROLE_IS_SYSTEM, ROLE_IN_USE. Formato: { statusCode, code, message }',
+  })
+  async deleteRole(
+    @CurrentTenant() organizationId: string,
+    @Param('roleId') roleId: string,
+  ): Promise<{ role: OrganizationRoleDto }> {
+    return this.rolesService.deleteOrganizationRole(organizationId, roleId);
+  }
+
+  @Put('members/:membershipId/roles')
+  @RequirePermissions('members.manage')
+  @ApiOperation({
+    summary: 'Reemplazar roles personalizados de un miembro',
+    description:
+      'Requiere members.manage. roleIds representa el set completo de roles personalizados ORGANIZATION adicionales; puede ser [] y no acepta OWNER, MEMBER ni otros roles de sistema.',
+  })
+  @ApiParam({
+    name: 'membershipId',
+    description: 'ID de la membresía objetivo',
+  })
+  @ApiBody({ type: ReplaceMembershipRolesDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Roles personalizados del miembro actualizados',
+    type: OrganizationMemberResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Error posible: VALIDATION_ERROR. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({ status: 401, description: 'Sesión inválida' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Acceso denegado. Códigos posibles: TENANT_REQUIRED, MEMBER_ACCESS_DENIED. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Errores posibles: MEMBERSHIP_NOT_FOUND, ROLE_NOT_FOUND. Formato: { statusCode, code, message }',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Error posible: ROLE_IS_SYSTEM. Formato: { statusCode, code, message }',
+  })
+  async replaceMembershipRoles(
+    @CurrentTenant() organizationId: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: ReplaceMembershipRolesDto,
+  ): Promise<OrganizationMemberResponseDto> {
+    return this.rolesService.replaceMembershipRoles(
+      organizationId,
+      membershipId,
+      dto,
+    );
   }
 
   @Post('invitations')

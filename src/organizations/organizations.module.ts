@@ -7,6 +7,7 @@ import { InvitationsController } from './invitations.controller';
 import { OrganizationsController } from './organizations.controller';
 import { InvitationsService } from './services/invitations.service';
 import { MembershipsService } from './services/memberships.service';
+import { OrganizationRolesManagementService } from './services/organization-roles-management.service';
 
 @Module({
   imports: [
@@ -16,6 +17,10 @@ import { MembershipsService } from './services/memberships.service';
     OrganizationProvisioningModule,
   ],
   controllers: [OrganizationsController, InvitationsController],
-  providers: [MembershipsService, InvitationsService],
+  providers: [
+    MembershipsService,
+    InvitationsService,
+    OrganizationRolesManagementService,
+  ],
 })
 export class OrganizationsModule {}
