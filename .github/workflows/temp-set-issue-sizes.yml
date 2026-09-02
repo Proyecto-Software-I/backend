@@ -1,0 +1,52 @@
+name: Temporary - Set Issue Sizes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-set-issue-sizes.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  set-sizes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign Size issue field values
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIELD_ID: "44687304"
+        run: |
+          set -euo pipefail
+
+          set_size() {
+            local issue="$1"
+            local size="$2"
+            local payload
+            payload=$(printf '{"issue_field_values":[{"field_id":%s,"value":"%s"}]}' "$FIELD_ID" "$size")
+
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2026-03-10" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${issue}/issue-field-values" \
+              --data "$payload" >/dev/null
+
+            echo "Set #${issue} -> ${size}"
+            sleep 1
+          }
+
+          set_size 1 S
+          set_size 3 S
+          set_size 5 XL
+          set_size 8 M
+          set_size 10 XL
+          set_size 11 L
+          set_size 13 S
+          set_size 15 XL
