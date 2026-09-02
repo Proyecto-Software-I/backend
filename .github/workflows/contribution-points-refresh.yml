@@ -1,0 +1,45 @@
+name: Contribution Points View Refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "5 4 14,28 9 *"
+    - cron: "5 4 12,26 10 *"
+    - cron: "5 4 9 11 *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: contribution-points-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh sprint leaderboard views
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout trusted repository state
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Refresh web-facing views
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/contribution_points_sprints.py refresh
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f contribution-points-refresh.md ]; then
+            cat contribution-points-refresh.md >> "$GITHUB_STEP_SUMMARY"
+          fi
