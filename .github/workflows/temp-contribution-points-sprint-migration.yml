@@ -1,0 +1,43 @@
+name: Temporary - Migrate Contribution Points Sprints
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-contribution-points-sprint-migration.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: contribution-points-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted repository state
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Assign existing awards to Sprint 1 and build web views
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/contribution_points_sprints.py migrate-sprints
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f contribution-points-sprint-migration.md ]; then
+            cat contribution-points-sprint-migration.md >> "$GITHUB_STEP_SUMMARY"
+          fi
