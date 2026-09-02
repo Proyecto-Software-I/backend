@@ -1,53 +1,58 @@
-name: Contribution Points Backfill Dry Run
+name: Contribution Points Backfill Activate
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
     paths:
-      - .github/scripts/contribution_points.py
       - .github/workflows/contribution-points-backfill.yml
 
 permissions:
-  contents: read
+  contents: write
   issues: read
   pull-requests: read
 
+concurrency:
+  group: contribution-points-backfill-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
-  dry-run:
-    name: Historical scoring dry run
+  apply:
+    name: Persist historical Contribution Points
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - name: Checkout trusted repository state
         uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Calculate historical contribution points
+      - name: Apply historical contribution points
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/scripts/contribution_points.py backfill --dry-run
+        run: python .github/scripts/contribution_points.py backfill --apply
 
       - name: Publish job summary
         if: always()
         run: |
-          if [ -f contribution-points-dry-run.md ]; then
-            cat contribution-points-dry-run.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f contribution-points-backfill.md ]; then
+            cat contribution-points-backfill.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload dry-run report
+      - name: Upload backfill report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: contribution-points-backend-dry-run
+          name: contribution-points-backend-backfill
           path: |
-            contribution-points-dry-run.json
-            contribution-points-dry-run.md
+            contribution-points-backfill.json
+            contribution-points-backfill.md
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30
