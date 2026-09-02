@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "type": "AWARD",
+  "repository": "Proyecto-Software-I/backend",
+  "issue": 10,
+  "issueUrl": "https://github.com/Proyecto-Software-I/backend/issues/10",
+  "pullRequest": 12,
+  "pullRequestUrl": "https://github.com/Proyecto-Software-I/backend/pull/12",
+  "author": "Orlando693",
+  "size": "XL",
+  "points": 8,
+  "mergedAt": "2026-08-24T05:04:57Z",
+  "awardedAt": "2026-09-02T21:38:13.391206Z",
+  "source": "backfill"
+}

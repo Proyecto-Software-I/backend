@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "repository": "Proyecto-Software-I/backend",
+  "generatedAt": "2026-09-02T21:38:13.391279Z",
+  "totalPoints": 21,
+  "awards": 3,
+  "contributors": [
+    {
+      "login": "Orlando693",
+      "points": 13,
+      "issues": 2,
+      "sizes": {
+        "XS": 0,
+        "S": 0,
+        "M": 0,
+        "L": 1,
+        "XL": 1
+      }
+    },
+    {
+      "login": "DarksouleaterXD",
+      "points": 8,
+      "issues": 1,
+      "sizes": {
+        "XS": 0,
+        "S": 0,
+        "M": 0,
+        "L": 0,
+        "XL": 1
+      }
+    }
+  ]
+}
