@@ -45,9 +45,9 @@ jobs:
           MODE: ${{ inputs.mode }}
         run: |
           if [ "$MODE" = "apply" ]; then
-            python .github/scripts/contribution_points.py backfill --apply
+            python .github/scripts/contribution_points_sprints.py backfill --apply
           else
-            python .github/scripts/contribution_points.py backfill --dry-run
+            python .github/scripts/contribution_points_sprints.py backfill --dry-run
           fi
 
       - name: Publish job summary
