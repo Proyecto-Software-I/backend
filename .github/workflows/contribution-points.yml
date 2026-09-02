@@ -39,7 +39,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: python .github/scripts/contribution_points.py score-pr --pr-number "$PR_NUMBER"
+        run: python .github/scripts/contribution_points_sprints.py score-pr --pr-number "$PR_NUMBER"
 
       - name: Publish job summary
         if: always()
