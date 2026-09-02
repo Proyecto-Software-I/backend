@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 2,
+  "repository": "Proyecto-Software-I/backend",
+  "generatedAt": "2026-09-02T21:57:00.088943Z",
+  "currentSprint": {
+    "id": "sprint-1",
+    "number": 1,
+    "name": "Ingest",
+    "start": "2026-09-01T00:00:00-04:00",
+    "end": "2026-09-14T00:00:00-04:00"
+  },
+  "resources": {
+    "allTime": "metrics/all-time.json",
+    "current": "metrics/current.json",
+    "config": "metrics/config.json",
+    "summary": "metrics/summary.json",
+    "sprints": {
+      "sprint-1": "metrics/sprints/sprint-1.json",
+      "sprint-2": "metrics/sprints/sprint-2.json",
+      "sprint-3": "metrics/sprints/sprint-3.json",
+      "sprint-4": "metrics/sprints/sprint-4.json",
+      "sprint-5": "metrics/sprints/sprint-5.json"
+    }
+  },
+  "sprints": [
+    {
+      "id": "sprint-1",
+      "number": 1,
+      "name": "Ingest",
+      "start": "2026-09-01T00:00:00-04:00",
+      "end": "2026-09-14T00:00:00-04:00",
+      "status": "active",
+      "points": 21,
+      "awards": 3,
+      "path": "metrics/sprints/sprint-1.json"
+    },
+    {
+      "id": "sprint-2",
+      "number": 2,
+      "name": "Understand",
+      "start": "2026-09-14T00:00:00-04:00",
+      "end": "2026-09-28T00:00:00-04:00",
+      "status": "upcoming",
+      "points": 0,
+      "awards": 0,
+      "path": "metrics/sprints/sprint-2.json"
+    },
+    {
+      "id": "sprint-3",
+      "number": 3,
+      "name": "Plan & Prepare",
+      "start": "2026-09-28T00:00:00-04:00",
+      "end": "2026-10-12T00:00:00-04:00",
+      "status": "upcoming",
+      "points": 0,
+      "awards": 0,
+      "path": "metrics/sprints/sprint-3.json"
+    },
+    {
+      "id": "sprint-4",
+      "number": 4,
+      "name": "Modernize Safely",
+      "start": "2026-10-12T00:00:00-04:00",
+      "end": "2026-10-26T00:00:00-04:00",
+      "status": "upcoming",
+      "points": 0,
+      "awards": 0,
+      "path": "metrics/sprints/sprint-4.json"
+    },
+    {
+      "id": "sprint-5",
+      "number": 5,
+      "name": "Productize",
+      "start": "2026-10-26T00:00:00-04:00",
+      "end": "2026-11-09T00:00:00-04:00",
+      "status": "upcoming",
+      "points": 0,
+      "awards": 0,
+      "path": "metrics/sprints/sprint-5.json"
+    }
+  ]
+}

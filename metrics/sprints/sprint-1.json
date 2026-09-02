@@ -1,9 +1,15 @@
 {
   "schemaVersion": 2,
   "repository": "Proyecto-Software-I/backend",
-  "scope": "all-time",
+  "scope": "sprint",
   "generatedAt": "2026-09-02T21:57:00.088943Z",
-  "sprint": null,
+  "sprint": {
+    "id": "sprint-1",
+    "number": 1,
+    "name": "Ingest",
+    "start": "2026-09-01T00:00:00-04:00",
+    "end": "2026-09-14T00:00:00-04:00"
+  },
   "totalPoints": 21,
   "awards": 3,
   "contributors": [
@@ -31,5 +37,6 @@
         "XL": 1
       }
     }
-  ]
+  ],
+  "status": "active"
 }

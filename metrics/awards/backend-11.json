@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "type": "AWARD",
   "repository": "Proyecto-Software-I/backend",
   "issue": 11,
@@ -11,5 +11,13 @@
   "points": 5,
   "mergedAt": "2026-08-31T02:36:28Z",
   "awardedAt": "2026-09-02T21:38:13.391206Z",
-  "source": "backfill"
+  "source": "backfill",
+  "sprint": {
+    "id": "sprint-1",
+    "number": 1,
+    "name": "Ingest",
+    "start": "2026-09-01T00:00:00-04:00",
+    "end": "2026-09-14T00:00:00-04:00"
+  },
+  "sprintAssignment": "historical-seed"
 }

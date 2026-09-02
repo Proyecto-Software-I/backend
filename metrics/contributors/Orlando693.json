@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 2,
+  "repository": "Proyecto-Software-I/backend",
+  "generatedAt": "2026-09-02T21:57:00.088943Z",
+  "login": "Orlando693",
+  "points": 13,
+  "issues": 2,
+  "sizes": {
+    "XS": 0,
+    "S": 0,
+    "M": 0,
+    "L": 1,
+    "XL": 1
+  },
+  "sprints": [
+    {
+      "id": "sprint-1",
+      "number": 1,
+      "name": "Ingest",
+      "start": "2026-09-01T00:00:00-04:00",
+      "end": "2026-09-14T00:00:00-04:00",
+      "points": 13,
+      "awards": 2,
+      "issues": [
+        10,
+        11
+      ]
+    },
+    {
+      "id": "sprint-2",
+      "number": 2,
+      "name": "Understand",
+      "start": "2026-09-14T00:00:00-04:00",
+      "end": "2026-09-28T00:00:00-04:00",
+      "points": 0,
+      "awards": 0,
+      "issues": []
+    },
+    {
+      "id": "sprint-3",
+      "number": 3,
+      "name": "Plan & Prepare",
+      "start": "2026-09-28T00:00:00-04:00",
+      "end": "2026-10-12T00:00:00-04:00",
+      "points": 0,
+      "awards": 0,
+      "issues": []
+    },
+    {
+      "id": "sprint-4",
+      "number": 4,
+      "name": "Modernize Safely",
+      "start": "2026-10-12T00:00:00-04:00",
+      "end": "2026-10-26T00:00:00-04:00",
+      "points": 0,
+      "awards": 0,
+      "issues": []
+    },
+    {
+      "id": "sprint-5",
+      "number": 5,
+      "name": "Productize",
+      "start": "2026-10-26T00:00:00-04:00",
+      "end": "2026-11-09T00:00:00-04:00",
+      "points": 0,
+      "awards": 0,
+      "issues": []
+    }
+  ],
+  "awards": [
+    {
+      "schemaVersion": 2,
+      "type": "AWARD",
+      "repository": "Proyecto-Software-I/backend",
+      "issue": 10,
+      "issueUrl": "https://github.com/Proyecto-Software-I/backend/issues/10",
+      "pullRequest": 12,
+      "pullRequestUrl": "https://github.com/Proyecto-Software-I/backend/pull/12",
+      "author": "Orlando693",
+      "size": "XL",
+      "points": 8,
+      "mergedAt": "2026-08-24T05:04:57Z",
+      "awardedAt": "2026-09-02T21:38:13.391206Z",
+      "source": "backfill",
+      "sprint": {
+        "id": "sprint-1",
+        "number": 1,
+        "name": "Ingest",
+        "start": "2026-09-01T00:00:00-04:00",
+        "end": "2026-09-14T00:00:00-04:00"
+      },
+      "sprintAssignment": "historical-seed"
+    },
+    {
+      "schemaVersion": 2,
+      "type": "AWARD",
+      "repository": "Proyecto-Software-I/backend",
+      "issue": 11,
+      "issueUrl": "https://github.com/Proyecto-Software-I/backend/issues/11",
+      "pullRequest": 14,
+      "pullRequestUrl": "https://github.com/Proyecto-Software-I/backend/pull/14",
+      "author": "Orlando693",
+      "size": "L",
+      "points": 5,
+      "mergedAt": "2026-08-31T02:36:28Z",
+      "awardedAt": "2026-09-02T21:38:13.391206Z",
+      "source": "backfill",
+      "sprint": {
+        "id": "sprint-1",
+        "number": 1,
+        "name": "Ingest",
+        "start": "2026-09-01T00:00:00-04:00",
+        "end": "2026-09-14T00:00:00-04:00"
+      },
+      "sprintAssignment": "historical-seed"
+    }
+  ]
+}

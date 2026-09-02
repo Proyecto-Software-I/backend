@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "repository": "Proyecto-Software-I/backend",
+  "timezone": "America/La_Paz",
+  "scoringTimestamp": "pullRequest.mergedAt",
+  "intervalSemantics": "start-inclusive-end-exclusive",
+  "points": {
+    "XS": 1,
+    "S": 2,
+    "M": 3,
+    "L": 5,
+    "XL": 8
+  },
+  "sprints": [
+    {
+      "id": "sprint-1",
+      "number": 1,
+      "name": "Ingest",
+      "start": "2026-09-01T00:00:00-04:00",
+      "end": "2026-09-14T00:00:00-04:00"
+    },
+    {
+      "id": "sprint-2",
+      "number": 2,
+      "name": "Understand",
+      "start": "2026-09-14T00:00:00-04:00",
+      "end": "2026-09-28T00:00:00-04:00"
+    },
+    {
+      "id": "sprint-3",
+      "number": 3,
+      "name": "Plan & Prepare",
+      "start": "2026-09-28T00:00:00-04:00",
+      "end": "2026-10-12T00:00:00-04:00"
+    },
+    {
+      "id": "sprint-4",
+      "number": 4,
+      "name": "Modernize Safely",
+      "start": "2026-10-12T00:00:00-04:00",
+      "end": "2026-10-26T00:00:00-04:00"
+    },
+    {
+      "id": "sprint-5",
+      "number": 5,
+      "name": "Productize",
+      "start": "2026-10-26T00:00:00-04:00",
+      "end": "2026-11-09T00:00:00-04:00"
+    }
+  ],
+  "hardening": {
+    "start": "2026-11-09T00:00:00-04:00",
+    "end": "2026-11-16T00:00:00-04:00"
+  },
+  "releaseCandidate": "2026-11-16T00:00:00-04:00",
+  "presentation": "2026-11-30T00:00:00-04:00"
+}
