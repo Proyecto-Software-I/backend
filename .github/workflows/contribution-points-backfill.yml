@@ -1,11 +1,16 @@
-name: Contribution Points Backfill Activate
+name: Contribution Points Backfill
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/contribution-points-backfill.yml
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Dry-run only, or persist eligible historical awards"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
 
 permissions:
   contents: write
@@ -17,8 +22,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  apply:
-    name: Persist historical Contribution Points
+  backfill:
+    name: Historical Contribution Points
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -34,25 +39,35 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Apply historical contribution points
+      - name: Calculate historical Contribution Points
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/scripts/contribution_points.py backfill --apply
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$MODE" = "apply" ]; then
+            python .github/scripts/contribution_points.py backfill --apply
+          else
+            python .github/scripts/contribution_points.py backfill --dry-run
+          fi
 
       - name: Publish job summary
         if: always()
         run: |
           if [ -f contribution-points-backfill.md ]; then
             cat contribution-points-backfill.md >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f contribution-points-dry-run.md ]; then
+            cat contribution-points-dry-run.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload backfill report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: contribution-points-backend-backfill
+          name: contribution-points-backend-${{ inputs.mode }}
           path: |
             contribution-points-backfill.json
             contribution-points-backfill.md
+            contribution-points-dry-run.json
+            contribution-points-dry-run.md
           if-no-files-found: warn
           retention-days: 30
