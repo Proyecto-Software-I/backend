@@ -28,7 +28,7 @@ import contribution_points as core
 
 SIZE_FIELD_NAME = "Size"
 AUTHORIZED_SIZE_SETTERS = {"s3b4s5c"}
-LEGACY_AUTOMATION_SETTERS = {"github-actions[bot]"}
+LEGACY_AUTOMATION_SETTERS = {"github-actions[bot]", "github-actions"}
 LEGACY_AUTOMATION_CUTOFF = "2026-09-03T00:00:00Z"
 CURRENT_SIZE_LOOKUP = core.issue_size
 
