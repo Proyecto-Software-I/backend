@@ -1,0 +1,42 @@
+name: Contribution Points Size Guard
+
+on:
+  issues:
+    types:
+      - field_added
+      - field_removed
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: contribution-points-size-guard-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit immutable scoring Size
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout trusted repository state
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify frozen Contribution Points Size
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: >-
+          python .github/scripts/contribution_points_guarded.py audit-size
+          --repository Proyecto-Software-I/backend
+          --issue-number "$ISSUE_NUMBER"
