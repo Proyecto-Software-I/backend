@@ -79,3 +79,5 @@ jobs:
             contribution-points-dry-run.md
           if-no-files-found: warn
           retention-days: 7
+
+# rerun after legacy automation trust policy was narrowed
