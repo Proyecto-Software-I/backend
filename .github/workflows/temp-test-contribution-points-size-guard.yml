@@ -28,6 +28,44 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Verify trust policy against synthetic tampering
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, '.github/scripts')
+          import contribution_points_guarded as guard
+
+          assert guard._event_is_trusted({
+              'actor': {'login': 'S3B4S5C'},
+              'createdAt': '2026-09-10T12:00:00Z',
+          })
+          assert not guard._event_is_trusted({
+              'actor': {'login': 'Orlando693'},
+              'createdAt': '2026-09-02T21:20:00Z',
+          })
+          assert not guard._event_is_trusted({
+              'actor': {'login': 'DarksouleaterXD'},
+              'createdAt': '2026-09-10T12:00:00Z',
+          })
+          assert guard._event_is_trusted({
+              'actor': {'login': 'github-actions'},
+              'createdAt': '2026-09-02T21:18:51Z',
+          })
+          assert guard._event_is_trusted({
+              'actor': {'login': 'github-actions[bot]'},
+              'createdAt': '2026-09-02T21:18:51Z',
+          })
+          assert not guard._event_is_trusted({
+              'actor': {'login': 'github-actions'},
+              'createdAt': '2026-09-03T00:00:00Z',
+          })
+          assert not guard._event_is_trusted({
+              'actor': {'login': 'github-actions[bot]'},
+              'createdAt': '2026-09-10T12:00:00Z',
+          })
+          print('synthetic trust/tampering policy: OK')
+          PY
+
       - name: Audit representative frozen sizes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,5 +117,3 @@ jobs:
             contribution-points-dry-run.md
           if-no-files-found: warn
           retention-days: 7
-
-# rerun after legacy automation trust policy was narrowed
