@@ -1,0 +1,38 @@
+name: Temporary set issue Size fields
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  set-size-fields:
+    if: github.head_ref == 'chore/set-size-fields-hu008-hu009'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set Size on HU-008 and HU-009 backend issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set_size() {
+            local issue_number="$1"
+            local size="$2"
+            curl --fail-with-body --silent --show-error -L -X PUT \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "https://api.github.com/repos/${REPOSITORY}/issues/${issue_number}/issue-field-values" \
+              -d "{\"issue_field_values\":[{\"field_id\":44687304,\"value\":\"${size}\"}]}"
+          }
+          set_size 18 L
+          set_size 19 M
