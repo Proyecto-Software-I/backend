@@ -530,6 +530,12 @@ export class AuthService {
     if (!session) {
       throw new AuthError('SESSION_REVOKED', 401, 'Sesión revocada');
     }
+    if (session.revokedAt) {
+      throw new AuthError('SESSION_REVOKED', 401, 'Sesión revocada');
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      throw new AuthError('SESSION_EXPIRED', 401, 'Sesión expirada');
+    }
 
     const accessToken = this.tokenService.sign({
       sub: session.userId,

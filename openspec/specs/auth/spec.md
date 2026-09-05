@@ -149,12 +149,27 @@ El sistema SHALL emitir access tokens como JWT con payload `{ sub: userId, sid: 
 - **THEN** el JWT contiene `sub`, `sid` y `org`, no contiene roles ni permisos, y los permisos se obtienen desde la base de datos cuando se construye la respuesta o se autoriza un request
 
 ### Requirement: Refresh issues a new access token via HttpOnly cookie
-El endpoint `POST /api/auth/refresh` SHALL leer el refresh token desde la cookie `legacylift_refresh` (`HttpOnly`, `SameSite=Lax`, `Secure` solo en producción, `Path=/api/auth`), validarlo contra `UserSession.refreshTokenHash`, y emitir un nuevo access token conservando el tenant activo actual de la sesión. Si la sesión quedó con `organizationId` nulo por suspensión o remoción de membership, el nuevo access token SHALL contener `org: null`. El refresh token nuevo SHALL rotarse (reescribir `refreshTokenHash`) y la cookie SHALL renovarse; el refresh token nunca SHALL devolverse en JSON.
+El endpoint `POST /api/auth/refresh` SHALL leer el refresh token desde la cookie `legacylift_refresh` (`HttpOnly`, `SameSite=Lax`, `Secure` solo en producción, `Path=/api/auth`), validarlo contra `UserSession.refreshTokenHash`, y emitir un nuevo access token conservando el tenant activo actual de una sesión no revocada ni expirada. Para este endpoint, una sesión se considera expirada cuando `expiresAt <= now`. Si la sesión quedó con `organizationId` nulo por suspensión o remoción de membership, el nuevo access token SHALL contener `org: null`. El refresh token nuevo SHALL rotarse (reescribir `refreshTokenHash`) y la cookie SHALL renovarse; el refresh token nunca SHALL devolverse en JSON.
 
 #### Scenario: Successful refresh
 - **GIVEN** existe una sesión con refresh token válido, no revocada y no expirada
 - **WHEN** se envía `POST /api/auth/refresh` con cookie válida
 - **THEN** el sistema responde con nuevo access token que conserva el tenant actual de la sesión, rota el refresh token y renueva la cookie, sin devolver el refresh en el cuerpo
+
+#### Scenario: Refresh with an expired session
+- **GIVEN** el refresh token corresponde a una sesión no revocada con `expiresAt` menor o igual a ahora
+- **WHEN** se envía `POST /api/auth/refresh` con la cookie
+- **THEN** el sistema responde `401` con código `SESSION_EXPIRED`, sin emitir access token, rotar el refresh token ni renovar la cookie
+
+#### Scenario: Refresh with a revoked session
+- **GIVEN** el refresh token corresponde a una sesión revocada
+- **WHEN** se envía `POST /api/auth/refresh` con la cookie
+- **THEN** el sistema responde `401` con código `SESSION_REVOKED`, sin emitir access token, rotar el refresh token ni renovar la cookie
+
+#### Scenario: Refresh with an unknown token
+- **GIVEN** el refresh token no corresponde a una sesión existente
+- **WHEN** se envía `POST /api/auth/refresh` con la cookie
+- **THEN** el sistema conserva la respuesta `401` con código `SESSION_REVOKED` definida para ese token inválido o inexistente
 
 #### Scenario: Refresh after tenant invalidation
 - **GIVEN** la sesión de un usuario tenía organizationId activo y luego su membership fue suspendida o removida, dejando `UserSession.organizationId` en null
@@ -169,7 +184,7 @@ El endpoint `POST /api/auth/logout` SHALL, para un usuario autenticado, asignar 
 - **THEN** la sesión queda revocada, la cookie se elimina y el sistema responde `204`
 
 ### Requirement: Errors follow the standardized error contract
-El sistema SHALL responder errores con cuerpo `{ statusCode, code, message }` y los códigos `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`, `USER_NOT_ACTIVE`, `NO_ACTIVE_MEMBERSHIP`, `ORGANIZATION_ACCESS_DENIED`, `SESSION_EXPIRED`, `SESSION_REVOKED`, `VALIDATION_ERROR`, `INVITATION_NOT_FOUND`, `INVITATION_EXPIRED`, `INVITATION_REVOKED`, `INVITATION_ALREADY_ACCEPTED` e `INVITATION_EMAIL_MISMATCH`. Los códigos de validación SHALL usar `400`, credenciales/sesión `401`, autorización `403`, no encontrado `404`, expirado/revocado `410` y conflicto `409`.
+El sistema SHALL responder errores con cuerpo `{ statusCode, code, message }` y los códigos `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`, `USER_NOT_ACTIVE`, `NO_ACTIVE_MEMBERSHIP`, `ORGANIZATION_ACCESS_DENIED`, `SESSION_EXPIRED`, `SESSION_REVOKED`, `VALIDATION_ERROR`, `INVITATION_NOT_FOUND`, `INVITATION_EXPIRED`, `INVITATION_REVOKED`, `INVITATION_ALREADY_ACCEPTED` e `INVITATION_EMAIL_MISMATCH`. Los códigos de validación SHALL usar `400`, credenciales y sesión `401`, autorización `403`, no encontrado `404`, invitaciones expiradas o revocadas `410` y conflicto `409`.
 
 #### Scenario: Validation error shape
 - **GIVEN** un request falla la validación de DTO, incluyendo un request de registro que mezcla modo normal e invitación

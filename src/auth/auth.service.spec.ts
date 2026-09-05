@@ -828,25 +828,78 @@ describe('AuthService', () => {
   });
 
   it('refresh con sesión inexistente rechaza con SESSION_REVOKED', async () => {
-    const { service, sessionService } = makeServices();
+    const { service, sessionService, tokenService } = makeServices();
     sessionService.findByRefreshTokenHash.mockResolvedValue(null);
 
     await expect(service.refresh('bad-refresh')).rejects.toMatchObject({
       code: 'SESSION_REVOKED',
+      status: 401,
     });
+    expect(tokenService.sign).not.toHaveBeenCalled();
+    expect(sessionService.rotateRefresh).not.toHaveBeenCalled();
   });
 
-  it('refresh emite nuevo access token conservando tenant', async () => {
-    const { service, sessionService } = makeServices();
+  it('refresh rechaza una sesión revocada con SESSION_REVOKED', async () => {
+    const { service, sessionService, tokenService } = makeServices();
     sessionService.findByRefreshTokenHash.mockResolvedValue({
       id: 's1',
       userId: 'u1',
       organizationId: 'o1',
+      revokedAt: new Date('2026-08-01T00:00:00.000Z'),
+      expiresAt: futureDate(),
+    });
+
+    await expect(service.refresh('refresh-cookie')).rejects.toMatchObject({
+      code: 'SESSION_REVOKED',
+      status: 401,
+    });
+    expect(tokenService.sign).not.toHaveBeenCalled();
+    expect(sessionService.rotateRefresh).not.toHaveBeenCalled();
+  });
+
+  it('refresh rechaza una sesión expirada en la frontera con SESSION_EXPIRED', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-01T00:00:00.000Z'));
+
+    try {
+      const { service, sessionService, tokenService } = makeServices();
+      sessionService.findByRefreshTokenHash.mockResolvedValue({
+        id: 's1',
+        userId: 'u1',
+        organizationId: 'o1',
+        revokedAt: null,
+        expiresAt: new Date('2026-09-01T00:00:00.000Z'),
+      });
+
+      await expect(service.refresh('refresh-cookie')).rejects.toMatchObject({
+        code: 'SESSION_EXPIRED',
+        status: 401,
+      });
+      expect(tokenService.sign).not.toHaveBeenCalled();
+      expect(sessionService.rotateRefresh).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('refresh emite nuevo access token y rota el refresh de una sesión válida', async () => {
+    const { service, sessionService, tokenService } = makeServices();
+    sessionService.findByRefreshTokenHash.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      organizationId: 'o1',
+      revokedAt: null,
+      expiresAt: futureDate(),
     });
 
     const result = await service.refresh('refresh-cookie');
 
     expect(sessionService.rotateRefresh).toHaveBeenCalled();
+    expect(tokenService.sign).toHaveBeenCalledWith({
+      sub: 'u1',
+      sid: 's1',
+      org: 'o1',
+    });
     expect(result.accessToken).toBeTruthy();
     expect(result.refreshToken).toBe('refresh-plain');
   });

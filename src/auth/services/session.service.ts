@@ -60,11 +60,7 @@ export class SessionService {
 
   async findByRefreshTokenHash(refreshTokenHash: string) {
     return this.prisma.userSession.findFirst({
-      where: {
-        refreshTokenHash,
-        revokedAt: null,
-        expiresAt: { gt: new Date() },
-      },
+      where: { refreshTokenHash },
     });
   }
 

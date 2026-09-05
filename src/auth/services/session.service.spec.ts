@@ -120,7 +120,7 @@ describe('SessionService', () => {
   });
 
   describe('findByRefreshTokenHash', () => {
-    it('finds a valid session by refresh token hash', async () => {
+    it('finds a session by refresh token hash regardless of its state', async () => {
       prisma.userSession.findFirst.mockResolvedValue({ id: 's1' });
 
       const result = await service.findByRefreshTokenHash('rh');
@@ -133,8 +133,6 @@ describe('SessionService', () => {
       expect(prisma.userSession.findFirst).toHaveBeenCalledWith({
         where: {
           refreshTokenHash: 'rh',
-          revokedAt: null,
-          expiresAt: { gt: expect.any(Date) },
         },
       });
     });
