@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "type": "AWARD",
+  "repository": "Proyecto-Software-I/backend",
+  "issue": 13,
+  "issueUrl": "https://github.com/Proyecto-Software-I/backend/issues/13",
+  "pullRequest": 16,
+  "pullRequestUrl": "https://github.com/Proyecto-Software-I/backend/pull/16",
+  "author": "DarksouleaterXD",
+  "size": "S",
+  "points": 2,
+  "mergedAt": "2026-09-05T06:27:40Z",
+  "awardedAt": "2026-09-05T06:34:55.071170Z",
+  "source": "pull_request_target",
+  "sprint": {
+    "id": "sprint-1",
+    "number": 1,
+    "name": "Ingest",
+    "start": "2026-09-01T00:00:00-04:00",
+    "end": "2026-09-14T00:00:00-04:00"
+  },
+  "sprintAssignment": "mergedAt"
+}

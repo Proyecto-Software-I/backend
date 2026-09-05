@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "repository": "Proyecto-Software-I/backend",
-  "generatedAt": "2026-09-02T21:57:00.088943Z",
+  "generatedAt": "2026-09-05T06:34:55.071268Z",
   "branch": "contribution-points",
   "points": {
     "XS": 1,
@@ -13,8 +13,8 @@
   "excludedAuthors": [
     "s3b4s5c"
   ],
-  "awards": 3,
-  "totalPoints": 21,
+  "awards": 4,
+  "totalPoints": 23,
   "currentSprint": {
     "id": "sprint-1",
     "number": 1,

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "repository": "Proyecto-Software-I/backend",
   "scope": "current-sprint",
-  "generatedAt": "2026-09-02T21:57:00.088943Z",
+  "generatedAt": "2026-09-05T06:34:55.071268Z",
   "sprint": {
     "id": "sprint-1",
     "number": 1,
@@ -10,8 +10,8 @@
     "start": "2026-09-01T00:00:00-04:00",
     "end": "2026-09-14T00:00:00-04:00"
   },
-  "totalPoints": 21,
-  "awards": 3,
+  "totalPoints": 23,
+  "awards": 4,
   "contributors": [
     {
       "login": "Orlando693",
@@ -27,11 +27,11 @@
     },
     {
       "login": "DarksouleaterXD",
-      "points": 8,
-      "issues": 1,
+      "points": 10,
+      "issues": 2,
       "sizes": {
         "XS": 0,
-        "S": 0,
+        "S": 1,
         "M": 0,
         "L": 0,
         "XL": 1

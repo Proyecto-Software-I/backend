@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "repository": "Proyecto-Software-I/backend",
-  "generatedAt": "2026-09-02T21:57:00.088943Z",
+  "generatedAt": "2026-09-05T06:34:55.071268Z",
   "currentSprint": {
     "id": "sprint-1",
     "number": 1,
@@ -30,8 +30,8 @@
       "start": "2026-09-01T00:00:00-04:00",
       "end": "2026-09-14T00:00:00-04:00",
       "status": "active",
-      "points": 21,
-      "awards": 3,
+      "points": 23,
+      "awards": 4,
       "path": "metrics/sprints/sprint-1.json"
     },
     {
