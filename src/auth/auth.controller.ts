@@ -175,7 +175,10 @@ export class AuthController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Renovar access token vía cookie' })
   @ApiResponse({ status: 200, description: 'Nuevo access token' })
-  @ApiResponse({ status: 401, description: 'Sesión revocada' })
+  @ApiResponse({
+    status: 401,
+    description: 'Sesión revocada, expirada o refresh token inválido',
+  })
   async refresh(@Req() req: Request, @Res() res: Response): Promise<void> {
     const refreshToken = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     if (!refreshToken) {
