@@ -1,34 +1,5 @@
 schema: spec-driven
 
-strict_tdd: true
-
-testing:
-  detected: 2026-09-05
-  runner:
-    framework: Jest 30 with ts-jest
-    command: npm test
-  layers:
-    unit:
-      available: true
-      tool: Jest and @nestjs/testing
-    integration:
-      available: true
-      tool: Jest, Supertest and PostgreSQL
-    e2e:
-      available: true
-      tool: Jest and Supertest
-      command: npm run test:e2e
-  coverage:
-    available: true
-    command: npm run test:cov
-  quality:
-    linter: npm run lint
-    type_checker: npm run build
-    formatter: npm run format
-  verification:
-    code: npm run check:code
-    openspec_and_code: npm run check
-
 context: |
   Repository: Proyecto-Software-I/backend.
   Stack: Node.js 24, NestJS, TypeScript strict and npm.
