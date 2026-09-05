@@ -274,13 +274,40 @@ def apply(repo: str, results: list[dict[str, Any]], source: str, scanned: int) -
 
     files = {p: json.dumps(a, indent=2, ensure_ascii=False) + "\n" for p, a in changed.items()}
     files.update(web_files(repo, list(existing.values()), cfg))
-    commit = core.commit_files(
-        repo,
-        parent_sha=parent,
-        base_tree_sha=tree,
-        files=files,
-        message="metrics: backfill contribution points" if source == "backfill" else f"metrics: score PR #{results[0]['pullRequest']}",
-    )
+    try:
+        commit = core.commit_files(
+            repo,
+            parent_sha=parent,
+            base_tree_sha=tree,
+            files=files,
+            message="metrics: backfill contribution points" if source == "backfill" else f"metrics: score PR #{results[0]['pullRequest']}",
+        )
+    except RuntimeError as exc:
+        if "Changes must be made through a pull request." not in str(exc):
+            raise
+        for item in output:
+            if item["result"] == core.AWARDED:
+                item["result"] = "SKIPPED_REPOSITORY_RULES"
+                item["points"] = 0
+                item["detail"] = "Repository rules require updates through a pull request; metrics were not persisted"
+        persisted = [award for path, award in existing.items() if path not in changed]
+        all_time = board(repo, persisted, now(), "all-time")
+        return {
+            "schemaVersion": 2,
+            "mode": "apply",
+            "repository": repo,
+            "generatedAt": now(),
+            "points": core.POINTS,
+            "excludedAuthors": sorted(core.EXCLUDED_AUTHORS),
+            "mergedPullRequestsScanned": scanned,
+            "results": output,
+            "awardsCreated": 0,
+            "pointsAwardedThisRun": 0,
+            "ledgerAwards": all_time["awards"],
+            "ledgerTotalPoints": all_time["totalPoints"],
+            "leaderboard": all_time["contributors"],
+            "metricsCommit": None,
+        }
     all_time = json.loads(files[ALL_TIME])
     return {
         "schemaVersion": 2,
