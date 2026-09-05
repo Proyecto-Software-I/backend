@@ -33,6 +33,7 @@ lint-out.txt
 # Cachés y archivos temporales
 
 .cache/
+.atl/
 .eslintcache
 tmp/
 temp/
