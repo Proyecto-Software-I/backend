@@ -4,14 +4,18 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthError } from '../exceptions/auth-error';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
+    const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
@@ -25,18 +29,35 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const body = exception.getResponse();
+
       if (typeof body === 'string') {
         message = body;
       } else if (body && typeof body === 'object') {
         const parsed = body as Record<string, unknown>;
         const msg = parsed['message'];
+
         message = Array.isArray(msg)
           ? msg.join(', ')
           : typeof msg === 'string'
             ? msg
             : exception.message;
       }
+
       code = this.codeForStatus(statusCode);
+    }
+
+    if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      if (exception instanceof Error) {
+        this.logger.error(
+          `${req.method} ${req.originalUrl} -> ${statusCode} ${code}: ${exception.message}`,
+          exception.stack,
+        );
+      } else {
+        this.logger.error(
+          `${req.method} ${req.originalUrl} -> ${statusCode} ${code}`,
+          String(exception),
+        );
+      }
     }
 
     res.status(statusCode).json({ statusCode, code, message });
