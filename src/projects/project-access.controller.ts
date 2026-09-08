@@ -63,7 +63,10 @@ export class ProjectAccessController {
   @ApiParam({ name: 'projectId', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectAccessesResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'PROJECT_NOT_FOUND' })
   async list(
     @CurrentTenant() org: string,
@@ -85,7 +88,10 @@ export class ProjectAccessController {
     status: 400,
     description: 'VALIDATION_ERROR or PROJECT_ACCESS_INVALID',
   })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({
     status: 404,
     description: 'PROJECT_NOT_FOUND, ROLE_NOT_FOUND, or MEMBERSHIP_NOT_FOUND',
@@ -116,7 +122,10 @@ export class ProjectAccessController {
   @ApiParam({ name: 'membershipId', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Requires members.manage' })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'PROJECT_NOT_FOUND' })
   async delete(
     @CurrentTenant() org: string,
