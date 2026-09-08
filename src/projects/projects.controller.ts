@@ -63,7 +63,7 @@ export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a tenant project' })
+  @ApiOperation({ summary: 'Create a project in the active tenant' })
   @ApiResponse({ status: 201, type: ProjectResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
   @ApiResponse({
