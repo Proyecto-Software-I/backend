@@ -57,7 +57,10 @@ export class ProjectRolesController {
   @Get()
   @ApiOperation({ summary: 'List active-tenant project roles' })
   @ApiResponse({ status: 200, type: ProjectRolesResponseDto })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   async list(
     @CurrentTenant() org: string,
     @CurrentUser() user: AuthContext,
@@ -73,7 +76,10 @@ export class ProjectRolesController {
     status: 400,
     description: 'VALIDATION_ERROR or PROJECT_ROLE_INVALID',
   })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   async create(
     @CurrentTenant() org: string,
     @CurrentUser() user: AuthContext,
@@ -91,7 +97,10 @@ export class ProjectRolesController {
     status: 400,
     description: 'VALIDATION_ERROR or PROJECT_ROLE_INVALID',
   })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'ROLE_NOT_FOUND' })
   @ApiResponse({ status: 409, description: 'ROLE_IS_SYSTEM' })
   async update(
@@ -111,7 +120,10 @@ export class ProjectRolesController {
   @ApiParam({ name: 'roleId', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectRoleResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'ROLE_NOT_FOUND' })
   @ApiResponse({ status: 409, description: 'ROLE_IS_SYSTEM or ROLE_IN_USE' })
   async delete(
