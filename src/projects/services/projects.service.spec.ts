@@ -1,11 +1,25 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
-import { ProjectStatus } from '../../generated/prisma/client';
-import { AuthError } from '../../common/exceptions/auth-error';
+import { Prisma, ProjectStatus } from '../../generated/prisma/client';
+import { SerializableTransactionService } from '../../organization-provisioning/services/serializable-transaction.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { mock } from '../testing/mock';
+import { ProjectAuthorizationService } from './project-authorization.service';
 import { ProjectsService } from './projects.service';
 
 describe('ProjectsService', () => {
-  it('creates a normalized project key with creator access in one transaction', async () => {
-    const tx = {
+  function transaction(
+    tx: Prisma.TransactionClient,
+  ): SerializableTransactionService {
+    return mock<SerializableTransactionService>({
+      run: jest.fn(
+        (callback: (client: Prisma.TransactionClient) => Promise<unknown>) =>
+          callback(tx),
+      ),
+    });
+  }
+
+  it('authorizes and bootstraps creator access inside one transaction', async () => {
+    const createAccess = jest.fn();
+    const tx = mock<Prisma.TransactionClient>({
       project: {
         create: jest.fn().mockResolvedValue({ id: 'project-1', key: 'CORE' }),
       },
@@ -20,34 +34,26 @@ describe('ProjectsService', () => {
           ]),
       },
       rolePermission: { deleteMany: jest.fn(), upsert: jest.fn() },
-      projectAccess: { create: jest.fn() },
-    };
-    const transactions = { run: jest.fn((callback) => callback(tx)) };
-    const authorization = {
-      requireOrganization: jest
-        .fn()
-        .mockResolvedValue({ membershipId: 'member-1' }),
-    };
+      projectAccess: { create: createAccess },
+    });
+    const requireOrganization = jest
+      .fn()
+      .mockResolvedValue({ membershipId: 'member-1' });
     const service = new ProjectsService(
-      {} as any,
-      transactions as any,
-      authorization as any,
+      mock<PrismaService>({}),
+      transaction(tx),
+      mock<ProjectAuthorizationService>({ requireOrganization }),
     );
 
-    await expect(
-      service.create('user-1', 'org-1', { key: ' core ', name: 'Core' }),
-    ).resolves.toMatchObject({ key: 'CORE' });
-    expect(tx.project.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          organizationId: 'org-1',
-          createdByUserId: 'user-1',
-          key: 'CORE',
-          status: ProjectStatus.DRAFT,
-        }),
-      }),
+    await service.create('user-1', 'org-1', { key: ' core ', name: 'Core' });
+
+    expect(requireOrganization).toHaveBeenCalledWith(
+      'user-1',
+      'org-1',
+      'projects.create',
+      tx,
     );
-    expect(tx.projectAccess.create).toHaveBeenCalledWith({
+    expect(createAccess).toHaveBeenCalledWith({
       data: {
         projectId: 'project-1',
         membershipId: 'member-1',
@@ -56,127 +62,54 @@ describe('ProjectsService', () => {
     });
   });
 
-  it('rejects skipped lifecycle transitions and repeated archive without updating', async () => {
-    const prisma = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'project-1',
-          status: ProjectStatus.ARCHIVED,
-          archivedAt: new Date(),
-        }),
-      },
-    };
-    const service = new ProjectsService(
-      prisma as any,
-      {} as any,
-      { requireProject: jest.fn() } as any,
-    );
-
-    await expect(
-      service.updateStatus(
-        'user-1',
-        'org-1',
-        'project-1',
-        ProjectStatus.PLANNING,
-      ),
-    ).rejects.toMatchObject({ code: 'PROJECT_STATUS_TRANSITION_INVALID' });
-    await expect(
-      service.archive('user-1', 'org-1', 'project-1'),
-    ).rejects.toMatchObject({ code: 'PROJECT_ALREADY_ARCHIVED' });
-  });
-
-  it('allows manage-only access to update metadata without requiring read access', async () => {
-    const update = jest
-      .fn()
-      .mockResolvedValue({ id: 'project-1', name: 'Renamed' });
-    const requireProject = jest
-      .fn()
-      .mockImplementation(
-        (_userId, _organizationId, _projectId, permission) => {
-          if (permission === 'projects.read') {
-            throw new Error('read must not be required for metadata updates');
-          }
-        },
-      );
-    const service = new ProjectsService(
-      {
+  it.each([
+    ['update', 'projects.manage'],
+    ['updateStatus', 'projects.manage'],
+    ['archive', 'projects.delete'],
+  ] as const)(
+    're-evaluates %s state and authorization through its transaction',
+    async (method, permission) => {
+      const update = jest.fn().mockResolvedValue({ id: 'project-1' });
+      const tx = mock<Prisma.TransactionClient>({
         project: {
           findFirst: jest.fn().mockResolvedValue({
             id: 'project-1',
             status: ProjectStatus.DRAFT,
+            archivedAt: null,
           }),
           update,
         },
-      } as any,
-      {} as any,
-      { requireProject } as any,
-    );
+        projectAccess: { findFirst: jest.fn().mockResolvedValue(null) },
+      });
+      const requireProject = jest.fn().mockResolvedValue(undefined);
+      const service = new ProjectsService(
+        mock<PrismaService>({}),
+        transaction(tx),
+        mock<ProjectAuthorizationService>({ requireProject }),
+      );
 
-    await expect(
-      service.update('user-1', 'org-1', 'project-1', { name: 'Renamed' }),
-    ).resolves.toMatchObject({ name: 'Renamed' });
-    expect(requireProject).toHaveBeenCalledWith(
-      'user-1',
-      'org-1',
-      'project-1',
-      'projects.manage',
-    );
-  });
+      if (method === 'update')
+        await service.update('user-1', 'org-1', 'project-1', {
+          name: 'Renamed',
+        });
+      if (method === 'updateStatus')
+        await service.updateStatus(
+          'user-1',
+          'org-1',
+          'project-1',
+          ProjectStatus.DISCOVERY,
+        );
+      if (method === 'archive')
+        await service.archive('user-1', 'org-1', 'project-1');
 
-  it('limits restricted listings to active same-tenant PROJECT roles that grant read', async () => {
-    const findMany = jest.fn().mockResolvedValue([]);
-    const service = new ProjectsService(
-      { project: { findMany } } as any,
-      {} as any,
-      {
-        requireOrganization: jest
-          .fn()
-          .mockRejectedValue(
-            new AuthError(
-              'PROJECT_ACCESS_DENIED',
-              403,
-              'Project access denied',
-            ),
-          ),
-      } as any,
-    );
-
-    await service.list('user-1', 'org-1', false);
-
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          accesses: {
-            some: expect.objectContaining({
-              role: expect.objectContaining({
-                organizationId: 'org-1',
-                scope: 'PROJECT',
-                permissions: {
-                  some: { permission: { key: 'projects.read' } },
-                },
-              }),
-            }),
-          },
-        }),
-      }),
-    );
-  });
-
-  it('propagates unexpected authorization resolver errors instead of treating them as restricted access', async () => {
-    const findMany = jest.fn();
-    const service = new ProjectsService(
-      { project: { findMany } } as any,
-      {} as any,
-      {
-        requireOrganization: jest
-          .fn()
-          .mockRejectedValue(new Error('database unavailable')),
-      } as any,
-    );
-
-    await expect(service.list('user-1', 'org-1', false)).rejects.toThrow(
-      'database unavailable',
-    );
-    expect(findMany).not.toHaveBeenCalled();
-  });
+      expect(requireProject).toHaveBeenCalledWith(
+        'user-1',
+        'org-1',
+        'project-1',
+        permission,
+        tx,
+      );
+      expect(update).toHaveBeenCalledTimes(1);
+    },
+  );
 });

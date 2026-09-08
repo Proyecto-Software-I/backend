@@ -37,13 +37,14 @@ export class ProjectsService {
   ) {}
 
   async create(userId: string, organizationId: string, dto: CreateProjectDto) {
-    const access = await this.authorization.requireOrganization(
-      userId,
-      organizationId,
-      'projects.create',
-    );
     try {
       return await this.transactions.run(async (tx) => {
+        const access = await this.authorization.requireOrganization(
+          userId,
+          organizationId,
+          'projects.create',
+          tx,
+        );
         const role = await tx.role.upsert({
           where: {
             organizationId_scope_key: {
@@ -193,20 +194,23 @@ export class ProjectsService {
     projectId: string,
     dto: UpdateProjectDto,
   ) {
-    const project = await this.findInTenant(organizationId, projectId);
-    if (project.status === ProjectStatus.ARCHIVED)
-      throw new AuthError(
-        'PROJECT_ALREADY_ARCHIVED',
-        409,
-        'Project is archived',
+    return this.transactions.run(async (tx) => {
+      const project = await this.findInTenant(organizationId, projectId, tx);
+      if (project.status === ProjectStatus.ARCHIVED)
+        throw new AuthError(
+          'PROJECT_ALREADY_ARCHIVED',
+          409,
+          'Project is archived',
+        );
+      await this.authorization.requireProject(
+        userId,
+        organizationId,
+        projectId,
+        'projects.manage',
+        tx,
       );
-    await this.authorization.requireProject(
-      userId,
-      organizationId,
-      projectId,
-      'projects.manage',
-    );
-    return this.prisma.project.update({ where: { id: projectId }, data: dto });
+      return tx.project.update({ where: { id: projectId }, data: dto });
+    });
   }
 
   async updateStatus(
@@ -215,54 +219,63 @@ export class ProjectsService {
     projectId: string,
     status: ProjectStatus,
   ) {
-    const project = await this.findInTenant(organizationId, projectId);
-    if (status === ProjectStatus.ARCHIVED || status === ProjectStatus.ON_HOLD)
-      throw new AuthError(
-        'PROJECT_STATUS_INVALID',
-        400,
-        'Invalid project status',
+    return this.transactions.run(async (tx) => {
+      const project = await this.findInTenant(organizationId, projectId, tx);
+      if (status === ProjectStatus.ARCHIVED || status === ProjectStatus.ON_HOLD)
+        throw new AuthError(
+          'PROJECT_STATUS_INVALID',
+          400,
+          'Invalid project status',
+        );
+      if (NEXT_STATUS[project.status] !== status)
+        throw new AuthError(
+          'PROJECT_STATUS_TRANSITION_INVALID',
+          409,
+          'Invalid project status transition',
+        );
+      await this.authorization.requireProject(
+        userId,
+        organizationId,
+        projectId,
+        'projects.manage',
+        tx,
       );
-    if (NEXT_STATUS[project.status] !== status)
-      throw new AuthError(
-        'PROJECT_STATUS_TRANSITION_INVALID',
-        409,
-        'Invalid project status transition',
-      );
-    await this.authorization.requireProject(
-      userId,
-      organizationId,
-      projectId,
-      'projects.manage',
-    );
-    return this.prisma.project.update({
-      where: { id: projectId },
-      data: { status },
+      return tx.project.update({
+        where: { id: projectId },
+        data: { status },
+      });
     });
   }
 
   async archive(userId: string, organizationId: string, projectId: string) {
-    const project = await this.findInTenant(organizationId, projectId);
-    if (project.status === ProjectStatus.ARCHIVED || project.archivedAt)
-      throw new AuthError(
-        'PROJECT_ALREADY_ARCHIVED',
-        409,
-        'Project is already archived',
+    return this.transactions.run(async (tx) => {
+      const project = await this.findInTenant(organizationId, projectId, tx);
+      if (project.status === ProjectStatus.ARCHIVED || project.archivedAt)
+        throw new AuthError(
+          'PROJECT_ALREADY_ARCHIVED',
+          409,
+          'Project is already archived',
+        );
+      await this.authorization.requireProject(
+        userId,
+        organizationId,
+        projectId,
+        'projects.delete',
+        tx,
       );
-    await this.authorization.requireProject(
-      userId,
-      organizationId,
-      projectId,
-      'projects.delete',
-    );
-    const archivedAt = new Date();
-    return this.prisma.project.update({
-      where: { id: projectId },
-      data: { status: ProjectStatus.ARCHIVED, archivedAt },
+      return tx.project.update({
+        where: { id: projectId },
+        data: { status: ProjectStatus.ARCHIVED, archivedAt: new Date() },
+      });
     });
   }
 
-  private async findInTenant(organizationId: string, projectId: string) {
-    const project = await this.prisma.project.findFirst({
+  private async findInTenant(
+    organizationId: string,
+    projectId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const project = await client.project.findFirst({
       where: { id: projectId, organizationId, deletedAt: null },
     });
     if (!project) {

@@ -4,7 +4,7 @@
 
 Define project permission resolution, configurable tenant roles, safe bootstrap access, and access administration.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Effective permissions are a tenant-safe union
 
@@ -22,7 +22,7 @@ For an `ACTIVE` membership, effective permissions on a project SHALL be the dedu
 
 ### Requirement: Tenant PROJECT roles are configurable
 
-Projects SHALL expose `GET/POST /api/projects/roles` and `PATCH/DELETE /api/projects/roles/:roleId`. Listing SHALL require organization `members.read` and return `200`; mutations SHALL require organization `members.manage`, returning `201`, `200`, and `200`. Bodies SHALL accept `name`, optional `description`, and unique `permissionKeys`; only `projects.read`, `projects.manage`, and `projects.delete` MAY be assigned. Roles SHALL be active-tenant, `scope=PROJECT`, and custom-role keys SHALL be stable normalized lowercase slugs unique within tenant and scope. Update SHALL preserve key; delete SHALL reject referenced roles.
+Projects SHALL expose `GET/POST /api/projects/roles` and `PATCH/DELETE /api/projects/roles/:roleId`. Listing SHALL require organization `members.read` and return `200`; mutations SHALL require organization `members.manage`, returning `201`, `200`, and `200`. Bodies SHALL accept a meaningful non-empty `name`, optional `description`, and `permissionKeys`; a non-empty name that normalizes to an empty deterministic role key SHALL return `400 PROJECT_ROLE_INVALID`. Only `projects.read`, `projects.manage`, and `projects.delete` MAY be assigned. Duplicate permission keys SHALL return `400 PROJECT_ROLE_INVALID`; an empty permission array remains valid. Roles SHALL be active-tenant, `scope=PROJECT`, and custom-role keys SHALL be stable normalized lowercase slugs unique within tenant and scope. A deterministic-key collision SHALL return `409 PROJECT_ROLE_ALREADY_EXISTS`. Update SHALL preserve key; delete SHALL reject referenced roles.
 
 #### Scenario: Create and update a custom role
 - **GIVEN** an authorized caller requests only allowlisted permissions

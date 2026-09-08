@@ -4,7 +4,7 @@
 
 Define tenant-safe project CRUD, visibility, workflow, archive, and public HTTP contracts.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Tenant-derived project creation and stable keys
 

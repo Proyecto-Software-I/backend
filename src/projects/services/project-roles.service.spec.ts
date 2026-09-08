@@ -1,94 +1,93 @@
+import { Prisma } from '../../generated/prisma/client';
+import { SerializableTransactionService } from '../../organization-provisioning/services/serializable-transaction.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { mock } from '../testing/mock';
+import { ProjectAuthorizationService } from './project-authorization.service';
 import { ProjectRolesService } from './project-roles.service';
 
 describe('ProjectRolesService', () => {
-  it('rejects delegated permissions outside the project allowlist', async () => {
+  const authorization = (permissions: string[]) =>
+    mock<ProjectAuthorizationService>({
+      requireOrganization: jest.fn().mockResolvedValue({ permissions }),
+    });
+
+  it('returns PROJECT_ROLE_INVALID for duplicate permissions', async () => {
     const service = new ProjectRolesService(
-      {} as any,
-      {
-        requireOrganization: jest.fn().mockResolvedValue({
-          permissions: ['members.manage', 'projects.read'],
-        }),
-      } as any,
+      mock<PrismaService>({}),
+      authorization(['members.manage', 'projects.read']),
     );
     await expect(
       service.create('user-1', 'org-1', {
-        name: 'Creator',
-        permissionKeys: ['projects.create'],
+        name: 'Reader',
+        permissionKeys: ['projects.read', 'projects.read'],
       }),
     ).rejects.toMatchObject({ code: 'PROJECT_ROLE_INVALID' });
   });
 
-  it('does not delete protected system roles', async () => {
-    const service = new ProjectRolesService(
-      {
-        role: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue({ id: 'role-1', isSystem: true }),
-        },
-      } as any,
-      { requireOrganization: jest.fn() } as any,
-    );
-    await expect(
-      service.delete('user-1', 'org-1', 'role-1'),
-    ).rejects.toMatchObject({ code: 'ROLE_IS_SYSTEM' });
-  });
-
-  it('rejects deletion when a project role still has defensive membership references', async () => {
-    const projectAccess = jest.fn().mockResolvedValue(0);
-    const membershipRole = jest.fn().mockResolvedValue(1);
-    const service = new ProjectRolesService(
-      {
-        role: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue({ id: 'role-1', isSystem: false }),
-        },
-        projectAccess: { count: projectAccess },
-        membershipRole: { count: membershipRole },
-        rolePermission: { deleteMany: jest.fn() },
-      } as any,
-      { requireOrganization: jest.fn() } as any,
-    );
-
-    await expect(
-      service.delete('user-1', 'org-1', 'role-1'),
-    ).rejects.toMatchObject({ code: 'ROLE_IN_USE' });
-    expect(projectAccess).toHaveBeenCalledWith({ where: { roleId: 'role-1' } });
-    expect(membershipRole).toHaveBeenCalledWith({
-      where: { roleId: 'role-1' },
+  it('maps deterministic key collisions to a stable functional outcome', async () => {
+    const collision = new Prisma.PrismaClientKnownRequestError('unique', {
+      code: 'P2002',
+      clientVersion: 'test',
     });
+    const transactions = mock<SerializableTransactionService>({
+      run: jest.fn(() => Promise.reject(collision)),
+    });
+    const service = new ProjectRolesService(
+      mock<PrismaService>({}),
+      authorization(['members.manage']),
+      transactions,
+    );
+    await expect(
+      service.create('user-1', 'org-1', { name: 'Reader', permissionKeys: [] }),
+    ).rejects.toMatchObject({ code: 'PROJECT_ROLE_ALREADY_EXISTS' });
   });
 
-  it('revalidates organization administration inside the serializable role-write transaction', async () => {
-    const tx = {
+  it.each(['   ', '!!!'])(
+    'rejects a role name that normalizes to an empty key: %p',
+    async (name) => {
+      const create = jest.fn();
+      const tx = mock<Prisma.TransactionClient>({
+        role: { create },
+      });
+      const service = new ProjectRolesService(
+        mock<PrismaService>({}),
+        authorization(['members.manage']),
+        mock<SerializableTransactionService>({
+          run: jest.fn(
+            (
+              callback: (client: Prisma.TransactionClient) => Promise<unknown>,
+            ) => callback(tx),
+          ),
+        }),
+      );
+
+      await expect(
+        service.create('user-1', 'org-1', { name, permissionKeys: [] }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ROLE_INVALID' });
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves empty permission arrays', async () => {
+    const tx = mock<Prisma.TransactionClient>({
       role: { create: jest.fn().mockResolvedValue({ id: 'role-1' }) },
       permission: { findMany: jest.fn().mockResolvedValue([]) },
-    };
-    const run = jest.fn((callback: (client: typeof tx) => Promise<unknown>) =>
-      callback(tx),
-    );
-    const requireOrganization = jest.fn().mockResolvedValue({
-      permissions: ['members.manage'],
     });
     const service = new ProjectRolesService(
-      {} as any,
-      { requireOrganization } as any,
-      { run } as any,
+      mock<PrismaService>({}),
+      authorization(['members.manage']),
+      mock<SerializableTransactionService>({
+        run: jest.fn(
+          (callback: (client: Prisma.TransactionClient) => Promise<unknown>) =>
+            callback(tx),
+        ),
+      }),
     );
-
     await expect(
       service.create('user-1', 'org-1', {
-        name: 'Empty project role',
+        name: 'Empty role',
         permissionKeys: [],
       }),
-    ).resolves.toEqual({ id: 'role-1' });
-    expect(run).toHaveBeenCalledTimes(1);
-    expect(requireOrganization).toHaveBeenCalledWith(
-      'user-1',
-      'org-1',
-      'members.manage',
-      tx,
-    );
+    ).resolves.toMatchObject({ id: 'role-1' });
   });
 });

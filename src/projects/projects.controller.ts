@@ -34,6 +34,7 @@ import {
   UpdateProjectStatusDto,
 } from './dto/project.dto';
 import { ProjectsService } from './services/projects.service';
+import { TenantRequiredGuard } from './guards/tenant-required.guard';
 
 function asProjectDto(project: Project): ProjectDto {
   return {
@@ -57,7 +58,7 @@ function asProjectDto(project: Project): ProjectDto {
 @ApiTags('projects')
 @ApiBearerAuth()
 @Controller('projects')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, TenantRequiredGuard)
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 

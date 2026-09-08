@@ -40,13 +40,15 @@ export class ProjectAuthorizationService {
     userId: string,
     organizationId: string,
     projectId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
     const access = await this.organizationPermissions.resolve(
       userId,
       organizationId,
+      client === this.prisma ? undefined : client,
     );
     if (!access) return new Set<string>();
-    const grant = await this.prisma.projectAccess.findFirst({
+    const grant = await client.projectAccess.findFirst({
       where: {
         projectId,
         membershipId: access.membershipId,
@@ -70,11 +72,13 @@ export class ProjectAuthorizationService {
     organizationId: string,
     projectId: string,
     permission: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
     const permissions = await this.permissionsFor(
       userId,
       organizationId,
       projectId,
+      client,
     );
     if (!permissions.has(permission)) {
       throw new AuthError(

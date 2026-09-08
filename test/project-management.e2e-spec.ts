@@ -21,6 +21,9 @@ type ProjectBody = {
   };
 };
 type ProjectListBody = { projects: Array<{ id: string }> };
+type ProjectAccessListBody = {
+  accesses: Array<{ membership: { id: string } }>;
+};
 type RolesBody = { roles: unknown[] };
 
 describe('Project management (e2e)', () => {
@@ -373,6 +376,18 @@ describe('Project management (e2e)', () => {
       '403',
       '404',
     ]);
+    for (const property of ['id', 'key', 'status', 'archivedAt'])
+      expect(document.components?.schemas?.ProjectDto).toHaveProperty(
+        `properties.${property}`,
+      );
+    for (const property of ['id', 'key', 'name', 'permissions'])
+      expect(document.components?.schemas?.ProjectRoleDto).toHaveProperty(
+        `properties.${property}`,
+      );
+    for (const property of ['projectId', 'membership', 'role'])
+      expect(document.components?.schemas?.ProjectAccessDto).toHaveProperty(
+        `properties.${property}`,
+      );
   });
 
   it('requires a same-tenant read-grant role for restricted listings and honors archived=false', async () => {
@@ -465,12 +480,29 @@ describe('Project management (e2e)', () => {
       },
     });
 
+    for (const requestWithoutTenant of [
+      () => request(server()).get('/api/projects'),
+      () => request(server()).get('/api/projects/roles'),
+      () => request(server()).get(`/api/projects/${randomUUID()}/accesses`),
+    ]) {
+      await requestWithoutTenant()
+        .set(auth(token))
+        .expect(403)
+        .expect(({ body }: { body: unknown }) =>
+          expectError(body as ErrorBody, 403, 'TENANT_REQUIRED'),
+        );
+    }
+  });
+
+  it('returns validation errors instead of throwing for non-string project keys', async () => {
+    const owner = await registerOwner('invalid-key-type');
     await request(server())
-      .get('/api/projects')
-      .set(auth(token))
-      .expect(403)
+      .post('/api/projects')
+      .set(auth(owner.auth.accessToken))
+      .send({ key: { invalid: true }, name: 'Invalid key' })
+      .expect(400)
       .expect(({ body }: { body: unknown }) =>
-        expectError(body as ErrorBody, 403, 'TENANT_REQUIRED'),
+        expectError(body as ErrorBody, 400, 'VALIDATION_ERROR'),
       );
   });
 
@@ -674,6 +706,39 @@ describe('Project management (e2e)', () => {
       );
   });
 
+  it('ignores persisted cross-tenant ProjectAccess role data', async () => {
+    const owner = await registerOwner('malformed-access-owner');
+    const member = await registerOwner('malformed-access-member');
+    const organizationId = owner.activeOrganization!.id;
+    const membership = await prisma.organizationMembership.create({
+      data: { organizationId, userId: member.user.id },
+    });
+    const project = await createProject(
+      owner.auth.accessToken,
+      'malformed-access-project',
+    );
+    const foreignRole = await addProjectRole(
+      member.activeOrganization!.id,
+      'Foreign reader',
+      ['projects.read'],
+    );
+    await prisma.projectAccess.create({
+      data: {
+        projectId: project.id,
+        membershipId: membership.id,
+        roleId: foreignRole.id,
+      },
+    });
+    const token = await selectOrganizationToken(member, organizationId);
+    await request(server())
+      .get(`/api/projects/${project.id}`)
+      .set(auth(token))
+      .expect(403)
+      .expect(({ body }: { body: unknown }) =>
+        expectError(body as ErrorBody, 403, 'PROJECT_ACCESS_DENIED'),
+      );
+  });
+
   it('returns an empty restricted list and denied detail when no project grant exists', async () => {
     const owner = await registerOwner('no-grant-owner');
     const member = await registerOwner('no-grant-member');
@@ -744,7 +809,10 @@ describe('Project management (e2e)', () => {
         .post('/api/projects/roles')
         .set(auth(owner.auth.accessToken))
         .send({ name: `Invalid ${permissionKeys.join('-')}`, permissionKeys })
-        .expect(400);
+        .expect(400)
+        .expect(({ body }: { body: unknown }) =>
+          expectError(body as ErrorBody, 400, 'PROJECT_ROLE_INVALID'),
+        );
     }
     await expect(
       prisma.role.count({
@@ -754,6 +822,23 @@ describe('Project management (e2e)', () => {
         },
       }),
     ).resolves.toBe(before);
+  });
+
+  it('rejects deterministic project-role key collisions predictably', async () => {
+    const owner = await registerOwner('role-collision');
+    await request(server())
+      .post('/api/projects/roles')
+      .set(auth(owner.auth.accessToken))
+      .send({ name: 'Release Manager', permissionKeys: [] })
+      .expect(201);
+    await request(server())
+      .post('/api/projects/roles')
+      .set(auth(owner.auth.accessToken))
+      .send({ name: 'release-manager', permissionKeys: [] })
+      .expect(409)
+      .expect(({ body }: { body: unknown }) =>
+        expectError(body as ErrorBody, 409, 'PROJECT_ROLE_ALREADY_EXISTS'),
+      );
   });
 
   it('gives a create-only member bootstrap project access through the protected creator role', async () => {
@@ -856,6 +941,130 @@ describe('Project management (e2e)', () => {
         where: { projectId: project.id, membershipId: membership.id },
       }),
     ).toBe(0);
+  });
+
+  it('excludes and preserves malformed foreign-membership project access', async () => {
+    const owner = await registerOwner('access-list-owner');
+    const foreignOwner = await registerOwner('access-list-foreign');
+    const project = await createProject(
+      owner.auth.accessToken,
+      'access-list-project',
+    );
+    const foreignMembership =
+      await prisma.organizationMembership.findFirstOrThrow({
+        where: {
+          organizationId: foreignOwner.activeOrganization!.id,
+          userId: foreignOwner.user.id,
+          status: 'ACTIVE',
+        },
+      });
+    const foreignRole = await addProjectRole(
+      foreignOwner.activeOrganization!.id,
+      'Foreign reader',
+      ['projects.read'],
+    );
+    await prisma.projectAccess.create({
+      data: {
+        projectId: project.id,
+        membershipId: foreignMembership.id,
+        roleId: foreignRole.id,
+      },
+    });
+
+    await request(server())
+      .get(`/api/projects/${project.id}/accesses`)
+      .set(auth(owner.auth.accessToken))
+      .expect(200)
+      .expect(({ body }: { body: ProjectAccessListBody }) =>
+        expect(
+          body.accesses.map(({ membership }) => membership.id).sort(),
+        ).not.toContain(foreignMembership.id),
+      );
+    await request(server())
+      .delete(`/api/projects/${project.id}/accesses/${foreignMembership.id}`)
+      .set(auth(owner.auth.accessToken))
+      .expect(204);
+    await expect(
+      prisma.projectAccess.findUnique({
+        where: {
+          projectId_membershipId: {
+            projectId: project.id,
+            membershipId: foreignMembership.id,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      roleId: foreignRole.id,
+    });
+  });
+
+  it('preserves malformed access with a same-tenant membership and foreign or ORGANIZATION role', async () => {
+    const owner = await registerOwner('local-access-owner');
+    const foreignOwner = await registerOwner('local-access-foreign');
+    const organizationId = owner.activeOrganization!.id;
+    const membership = await prisma.organizationMembership.create({
+      data: { organizationId, userId: foreignOwner.user.id },
+    });
+    const project = await createProject(
+      owner.auth.accessToken,
+      'access-local-member-project',
+    );
+    const foreignRole = await addProjectRole(
+      foreignOwner.activeOrganization!.id,
+      'Foreign reader',
+      ['projects.read'],
+    );
+    const organizationRole = await addOrganizationPermissionRole(
+      organizationId,
+      membership.id,
+      [],
+    );
+    await prisma.projectAccess.create({
+      data: {
+        projectId: project.id,
+        membershipId: membership.id,
+        roleId: foreignRole.id,
+      },
+    });
+
+    await request(server())
+      .delete(`/api/projects/${project.id}/accesses/${membership.id}`)
+      .set(auth(owner.auth.accessToken))
+      .expect(204);
+    await expect(
+      prisma.projectAccess.findUnique({
+        where: {
+          projectId_membershipId: {
+            projectId: project.id,
+            membershipId: membership.id,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ roleId: foreignRole.id });
+
+    await prisma.projectAccess.update({
+      where: {
+        projectId_membershipId: {
+          projectId: project.id,
+          membershipId: membership.id,
+        },
+      },
+      data: { roleId: organizationRole.id },
+    });
+    await request(server())
+      .delete(`/api/projects/${project.id}/accesses/${membership.id}`)
+      .set(auth(owner.auth.accessToken))
+      .expect(204);
+    await expect(
+      prisma.projectAccess.findUnique({
+        where: {
+          projectId_membershipId: {
+            projectId: project.id,
+            membershipId: membership.id,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ roleId: organizationRole.id });
   });
 
   it('rejects inactive, foreign, and ORGANIZATION-role access targets without changes', async () => {

@@ -20,7 +20,12 @@ export class ProjectAccessService {
   async list(userId: string, organizationId: string, projectId: string) {
     await this.requireProjectAdmin(userId, organizationId, projectId);
     return this.prisma.projectAccess.findMany({
-      where: { projectId },
+      where: {
+        projectId,
+        project: { organizationId, deletedAt: null },
+        membership: { organizationId, status: MembershipStatus.ACTIVE },
+        role: { organizationId, scope: RoleScope.PROJECT },
+      },
       include: {
         membership: {
           include: {
@@ -85,6 +90,14 @@ export class ProjectAccessService {
         where: { projectId_membershipId: { projectId, membershipId } },
         update: { roleId },
         create: { projectId, membershipId, roleId },
+        include: {
+          membership: {
+            include: {
+              user: { select: { id: true, email: true, displayName: true } },
+            },
+          },
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
       });
     });
   }
@@ -98,7 +111,13 @@ export class ProjectAccessService {
     await this.write(async (tx) => {
       await this.requireProjectAdmin(userId, organizationId, projectId, tx);
       await tx.projectAccess.deleteMany({
-        where: { projectId, membershipId },
+        where: {
+          projectId,
+          membershipId,
+          project: { organizationId, deletedAt: null },
+          membership: { organizationId, status: MembershipStatus.ACTIVE },
+          role: { organizationId, scope: RoleScope.PROJECT },
+        },
       });
     });
   }

@@ -40,28 +40,49 @@ export class ProjectRolesService {
     organizationId: string,
     dto: CreateProjectRoleDto,
   ) {
-    return this.write(async (tx) => {
-      const access = await this.authorization.requireOrganization(
-        userId,
-        organizationId,
-        'members.manage',
-        tx,
-      );
-      this.validatePermissions(dto.permissionKeys, access.permissions);
-      return tx.role.create({
-        data: {
+    try {
+      return await this.write(async (tx) => {
+        const access = await this.authorization.requireOrganization(
+          userId,
           organizationId,
-          scope: RoleScope.PROJECT,
-          key: this.slug(dto.name),
-          name: dto.name,
-          description: dto.description,
-          permissions: {
-            create: await this.permissionLinks(dto.permissionKeys, tx),
+          'members.manage',
+          tx,
+        );
+        const key = this.slug(dto.name);
+        if (!key)
+          throw new AuthError(
+            'PROJECT_ROLE_INVALID',
+            400,
+            'Invalid project role name',
+          );
+        this.validatePermissions(dto.permissionKeys, access.permissions);
+        return tx.role.create({
+          data: {
+            organizationId,
+            scope: RoleScope.PROJECT,
+            key,
+            name: dto.name,
+            description: dto.description,
+            permissions: {
+              create: await this.permissionLinks(dto.permissionKeys, tx),
+            },
           },
-        },
-        include: { permissions: { include: { permission: true } } },
+          include: { permissions: { include: { permission: true } } },
+        });
       });
-    });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new AuthError(
+          'PROJECT_ROLE_ALREADY_EXISTS',
+          409,
+          'A project role with this name already exists',
+        );
+      }
+      throw error;
+    }
   }
 
   async update(
@@ -126,7 +147,10 @@ export class ProjectRolesService {
       ]);
       if (projectAccessCount || membershipRoleCount)
         throw new AuthError('ROLE_IN_USE', 409, 'Role is in use');
-      return tx.role.delete({ where: { id: roleId } });
+      return tx.role.delete({
+        where: { id: roleId },
+        include: { permissions: { include: { permission: true } } },
+      });
     });
   }
 

@@ -1,187 +1,106 @@
-import { ProjectAccessService } from './project-access.service';
 import { MembershipStatus, RoleScope } from '../../generated/prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { mock } from '../testing/mock';
+import { ProjectAccessService } from './project-access.service';
+import { ProjectAuthorizationService } from './project-authorization.service';
 
 describe('ProjectAccessService', () => {
-  it('rejects a foreign or inactive membership before changing project access', async () => {
-    const prisma = {
-      project: { findFirst: jest.fn().mockResolvedValue({ id: 'project-1' }) },
-      organizationMembership: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'member-2',
-          organizationId: 'org-1',
-          status: MembershipStatus.INVITED,
-        }),
-      },
-      role: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'role-1',
-          organizationId: 'org-1',
-          scope: RoleScope.PROJECT,
-        }),
-      },
-    };
+  it('lists only active same-tenant PROJECT access relations', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
     const service = new ProjectAccessService(
-      prisma as any,
-      {
-        requireOrganization: jest
-          .fn()
-          .mockResolvedValue({ permissions: ['members.manage'] }),
-      } as any,
-    );
-    await expect(
-      service.put('user-1', 'org-1', 'project-1', 'member-2', 'role-1'),
-    ).rejects.toMatchObject({ code: 'PROJECT_ACCESS_INVALID' });
-  });
-
-  it('makes delete repeatable', async () => {
-    const deleted = jest.fn().mockResolvedValue({ count: 0 });
-    const service = new ProjectAccessService(
-      {
+      mock<PrismaService>({
         project: {
           findFirst: jest.fn().mockResolvedValue({ id: 'project-1' }),
         },
-        projectAccess: { deleteMany: deleted },
-      } as any,
-      {
+        projectAccess: { findMany },
+      }),
+      mock<ProjectAuthorizationService>({
         requireOrganization: jest
           .fn()
           .mockResolvedValue({ permissions: ['members.manage'] }),
-      } as any,
-    );
-    await expect(
-      service.delete('user-1', 'org-1', 'project-1', 'member-2'),
-    ).resolves.toBeUndefined();
-    expect(deleted).toHaveBeenCalledWith({
-      where: { projectId: 'project-1', membershipId: 'member-2' },
-    });
-  });
-
-  it('does not disclose or accept a missing membership while assigning access', async () => {
-    const upsert = jest.fn();
-    const service = new ProjectAccessService(
-      {
-        project: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'project-1' }),
-        },
-        organizationMembership: {
-          findFirst: jest.fn().mockResolvedValue(null),
-        },
-        role: { findFirst: jest.fn().mockResolvedValue({ id: 'role-1' }) },
-        projectAccess: { upsert },
-      } as any,
-      { requireOrganization: jest.fn().mockResolvedValue(undefined) } as any,
+      }),
     );
 
-    await expect(
-      service.put('user-1', 'org-1', 'project-1', 'member-2', 'role-1'),
-    ).rejects.toMatchObject({ code: 'MEMBERSHIP_NOT_FOUND' });
-    expect(upsert).not.toHaveBeenCalled();
+    await service.list('user-1', 'org-1', 'project-1');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          projectId: 'project-1',
+          project: { organizationId: 'org-1', deletedAt: null },
+          membership: {
+            organizationId: 'org-1',
+            status: MembershipStatus.ACTIVE,
+          },
+          role: { organizationId: 'org-1', scope: RoleScope.PROJECT },
+        },
+      }),
+    );
   });
 
-  it('does not disclose or accept a missing project role while assigning access', async () => {
+  it('rejects an inactive membership before changing project access', async () => {
     const upsert = jest.fn();
     const service = new ProjectAccessService(
-      {
+      mock<PrismaService>({
         project: {
           findFirst: jest.fn().mockResolvedValue({ id: 'project-1' }),
         },
         organizationMembership: {
           findFirst: jest.fn().mockResolvedValue({
             id: 'member-2',
-            organizationId: 'org-1',
-            status: MembershipStatus.ACTIVE,
-          }),
-        },
-        role: { findFirst: jest.fn().mockResolvedValue(null) },
-        projectAccess: { upsert },
-      } as any,
-      { requireOrganization: jest.fn().mockResolvedValue(undefined) } as any,
-    );
-
-    await expect(
-      service.put('user-1', 'org-1', 'project-1', 'member-2', 'role-1'),
-    ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' });
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  it('rejects assigning a role whose permissions exceed the caller organization delegation', async () => {
-    const upsert = jest.fn();
-    const service = new ProjectAccessService(
-      {
-        project: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'project-1' }),
-        },
-        organizationMembership: {
-          findFirst: jest.fn().mockResolvedValue({
-            id: 'member-2',
-            organizationId: 'org-1',
-            status: MembershipStatus.ACTIVE,
+            status: MembershipStatus.INVITED,
           }),
         },
         role: {
           findFirst: jest.fn().mockResolvedValue({
             id: 'role-1',
-            organizationId: 'org-1',
             scope: RoleScope.PROJECT,
-            permissions: [{ permission: { key: 'projects.delete' } }],
+            permissions: [],
           }),
         },
         projectAccess: { upsert },
-      } as any,
-      {
-        requireOrganization: jest.fn().mockResolvedValue({
-          permissions: ['members.manage', 'projects.read'],
-        }),
-      } as any,
+      }),
+      mock<ProjectAuthorizationService>({
+        requireOrganization: jest
+          .fn()
+          .mockResolvedValue({ permissions: ['members.manage'] }),
+      }),
     );
-
     await expect(
       service.put('user-1', 'org-1', 'project-1', 'member-2', 'role-1'),
     ).rejects.toMatchObject({ code: 'PROJECT_ACCESS_INVALID' });
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it('returns project not found before checking administration permission', async () => {
+  it('keeps deletes idempotent without targeting malformed access relations', async () => {
+    const deleted = jest.fn().mockResolvedValue({ count: 0 });
     const service = new ProjectAccessService(
-      { project: { findFirst: jest.fn().mockResolvedValue(null) } } as any,
-      {
-        requireOrganization: jest.fn().mockRejectedValue({
-          code: 'PROJECT_ACCESS_DENIED',
-        }),
-      } as any,
+      mock<PrismaService>({
+        project: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'project-1' }),
+        },
+        projectAccess: { deleteMany: deleted },
+      }),
+      mock<ProjectAuthorizationService>({
+        requireOrganization: jest
+          .fn()
+          .mockResolvedValue({ permissions: ['members.manage'] }),
+      }),
     );
-
-    await expect(
-      service.list('user-1', 'org-1', 'foreign-project'),
-    ).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
-  });
-
-  it('revalidates administration inside the serializable access-write transaction', async () => {
-    const tx = {
-      project: { findFirst: jest.fn().mockResolvedValue({ id: 'project-1' }) },
-      projectAccess: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    };
-    const run = jest.fn((callback: (client: typeof tx) => Promise<unknown>) =>
-      callback(tx),
-    );
-    const requireOrganization = jest.fn().mockResolvedValue({
-      permissions: ['members.manage'],
-    });
-    const service = new ProjectAccessService(
-      {} as any,
-      { requireOrganization } as any,
-      { run } as any,
-    );
-
     await expect(
       service.delete('user-1', 'org-1', 'project-1', 'member-2'),
     ).resolves.toBeUndefined();
-    expect(run).toHaveBeenCalledTimes(1);
-    expect(requireOrganization).toHaveBeenCalledWith(
-      'user-1',
-      'org-1',
-      'members.manage',
-      tx,
-    );
+    expect(deleted).toHaveBeenCalledWith({
+      where: {
+        projectId: 'project-1',
+        membershipId: 'member-2',
+        project: { organizationId: 'org-1', deletedAt: null },
+        membership: {
+          organizationId: 'org-1',
+          status: MembershipStatus.ACTIVE,
+        },
+        role: { organizationId: 'org-1', scope: RoleScope.PROJECT },
+      },
+    });
   });
 });

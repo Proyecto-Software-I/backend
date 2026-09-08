@@ -6,6 +6,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ProjectAccessController } from './project-access.controller';
 import { ProjectRolesController } from './project-roles.controller';
 import { ProjectsController } from './projects.controller';
+import { TenantRequiredGuard } from './guards/tenant-required.guard';
 import { ProjectAccessService } from './services/project-access.service';
 import { ProjectAuthorizationService } from './services/project-authorization.service';
 import { ProjectRolesService } from './services/project-roles.service';
@@ -28,6 +29,7 @@ import { ProjectsService } from './services/projects.service';
     ProjectAuthorizationService,
     ProjectRolesService,
     ProjectAccessService,
+    TenantRequiredGuard,
   ],
 })
 export class ProjectsModule {}
