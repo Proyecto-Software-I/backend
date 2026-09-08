@@ -2,23 +2,15 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RoleScope } from '../../generated/prisma/client';
+import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuthContext } from '../../auth/decorators/current-user.decorator';
 import { REQUIRED_PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import { OrganizationPermissionResolver } from '../services/organization-permission-resolver.service';
 import { PermissionGuard } from './permission.guard';
 
 type TestRequest = {
   user?: AuthContext & { permissions?: string[] };
   accessControl?: unknown;
-};
-
-type MembershipFixture = {
-  id: string;
-  roles: Array<{
-    role: {
-      scope: RoleScope;
-      permissions: Array<{ permission: { key: string } }>;
-    };
-  }>;
 };
 
 function makeContext(request: TestRequest): ExecutionContext {
@@ -35,24 +27,12 @@ function makeGuard(requiredPermissions: string[], membership: unknown) {
       key === REQUIRED_PERMISSIONS_KEY ? requiredPermissions : undefined,
     ),
   } as unknown as Reflector;
-  const resolvedMembership =
-    membership && typeof membership === 'object' && 'roles' in membership
-      ? (() => {
-          const fixture = membership as MembershipFixture;
-          return {
-            userId: 'user-1',
-            organizationId: 'org-1',
-            membershipId: fixture.id,
-            permissions: fixture.roles
-              .filter(({ role }) => role.scope === RoleScope.ORGANIZATION)
-              .flatMap(({ role }) =>
-                role.permissions.map(({ permission }) => permission.key),
-              ),
-          };
-        })()
-      : membership;
-  const resolve = jest.fn().mockResolvedValue(resolvedMembership);
-  const resolver = { resolve } as any;
+  const findFirst = jest.fn().mockResolvedValue(membership);
+  const prisma = {
+    organizationMembership: { findFirst },
+  } as unknown as PrismaService;
+  const resolver = new OrganizationPermissionResolver(prisma);
+  const resolve = jest.spyOn(resolver, 'resolve');
 
   return { guard: new PermissionGuard(reflector, resolver), resolve };
 }
