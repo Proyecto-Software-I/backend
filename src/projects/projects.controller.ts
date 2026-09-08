@@ -66,7 +66,10 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Create a tenant project' })
   @ApiResponse({ status: 201, type: ProjectResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 409, description: 'PROJECT_ALREADY_EXISTS' })
   async create(
     @CurrentTenant() organizationId: string,
@@ -84,6 +87,7 @@ export class ProjectsController {
   @ApiOperation({ summary: 'List accessible tenant projects' })
   @ApiResponse({ status: 200, type: ProjectsResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
+  @ApiResponse({ status: 403, description: 'TENANT_REQUIRED' })
   async list(
     @CurrentTenant() organizationId: string,
     @CurrentUser() user: AuthContext,
@@ -101,7 +105,10 @@ export class ProjectsController {
   @ApiParam({ name: 'projectId', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'PROJECT_NOT_FOUND' })
   async find(
     @CurrentTenant() organizationId: string,
@@ -120,7 +127,10 @@ export class ProjectsController {
   @ApiParam({ name: 'projectId', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'PROJECT_NOT_FOUND' })
   @ApiResponse({ status: 409, description: 'PROJECT_ALREADY_ARCHIVED' })
   async update(
@@ -144,7 +154,10 @@ export class ProjectsController {
     status: 400,
     description: 'VALIDATION_ERROR or PROJECT_STATUS_INVALID',
   })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'PROJECT_NOT_FOUND' })
   @ApiResponse({
     status: 409,
@@ -173,7 +186,10 @@ export class ProjectsController {
   @ApiParam({ name: 'projectId', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
-  @ApiResponse({ status: 403, description: 'PROJECT_ACCESS_DENIED' })
+  @ApiResponse({
+    status: 403,
+    description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
+  })
   @ApiResponse({ status: 404, description: 'PROJECT_NOT_FOUND' })
   @ApiResponse({ status: 409, description: 'PROJECT_ALREADY_ARCHIVED' })
   async archive(
