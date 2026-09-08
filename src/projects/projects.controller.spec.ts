@@ -4,6 +4,15 @@ import { mock } from './testing/mock';
 import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './services/projects.service';
 
+function methodMetadataTarget(prototype: object, methodName: string): object {
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, methodName);
+  const value: unknown = descriptor?.value;
+  if (typeof value !== 'function') {
+    throw new Error(`Missing controller method metadata target: ${methodName}`);
+  }
+  return value;
+}
+
 describe('ProjectsController', () => {
   it('delegates creation to the tenant-derived project service', async () => {
     const create = jest.fn().mockResolvedValue({ id: 'project-1', tags: [] });
@@ -27,27 +36,20 @@ describe('ProjectsController', () => {
   it('documents archived workflow and duplicate role conflicts in Swagger metadata', () => {
     const statusResponses: unknown = Reflect.getMetadata(
       'swagger/apiResponse',
-      ProjectsController.prototype.updateStatus,
+      methodMetadataTarget(ProjectsController.prototype, 'updateStatus'),
     );
     const roleCreateResponses: unknown = Reflect.getMetadata(
       'swagger/apiResponse',
-      ProjectRolesController.prototype.create,
+      methodMetadataTarget(ProjectRolesController.prototype, 'create'),
     );
 
-    expect(statusResponses).toEqual(
-      expect.objectContaining({
-        409: expect.objectContaining({
-          description:
-            'PROJECT_STATUS_TRANSITION_INVALID or PROJECT_ALREADY_ARCHIVED',
-        }),
-      }),
+    expect(statusResponses).toHaveProperty(
+      '409.description',
+      'PROJECT_STATUS_TRANSITION_INVALID or PROJECT_ALREADY_ARCHIVED',
     );
-    expect(roleCreateResponses).toEqual(
-      expect.objectContaining({
-        409: expect.objectContaining({
-          description: 'PROJECT_ROLE_ALREADY_EXISTS',
-        }),
-      }),
+    expect(roleCreateResponses).toHaveProperty(
+      '409.description',
+      'PROJECT_ROLE_ALREADY_EXISTS',
     );
   });
 });
