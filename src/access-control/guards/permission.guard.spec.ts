@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { MembershipStatus, RoleScope } from '../../generated/prisma/client';
+import { RoleScope } from '../../generated/prisma/client';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuthContext } from '../../auth/decorators/current-user.decorator';
 import { REQUIRED_PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import { OrganizationPermissionResolver } from '../services/organization-permission-resolver.service';
 import { PermissionGuard } from './permission.guard';
 
 type TestRequest = {
@@ -30,8 +31,10 @@ function makeGuard(requiredPermissions: string[], membership: unknown) {
   const prisma = {
     organizationMembership: { findFirst },
   } as unknown as PrismaService;
+  const resolver = new OrganizationPermissionResolver(prisma);
+  const resolve = jest.spyOn(resolver, 'resolve');
 
-  return { guard: new PermissionGuard(reflector, prisma), findFirst };
+  return { guard: new PermissionGuard(reflector, resolver), resolve };
 }
 
 const authContext: AuthContext = {
@@ -59,19 +62,11 @@ const membership = {
 describe('PermissionGuard', () => {
   it('allows when the required permission is present in the database', async () => {
     const request: TestRequest = { user: authContext };
-    const { guard, findFirst } = makeGuard(['members.manage'], membership);
+    const { guard, resolve } = makeGuard(['members.manage'], membership);
 
     await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
 
-    expect(findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          userId: 'user-1',
-          organizationId: 'org-1',
-          status: MembershipStatus.ACTIVE,
-        },
-      }),
-    );
+    expect(resolve).toHaveBeenCalledWith('user-1', 'org-1');
     expect(request.accessControl).toEqual({
       userId: 'user-1',
       organizationId: 'org-1',
@@ -109,14 +104,14 @@ describe('PermissionGuard', () => {
   });
 
   it('rejects when the session has no active tenant', async () => {
-    const { guard, findFirst } = makeGuard(['members.read'], membership);
+    const { guard, resolve } = makeGuard(['members.read'], membership);
 
     await expect(
       guard.canActivate(
         makeContext({ user: { ...authContext, organizationId: null } }),
       ),
     ).rejects.toMatchObject({ code: 'TENANT_REQUIRED' });
-    expect(findFirst).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it('denies when request user contains false permissions but the database does not grant them', async () => {
@@ -161,10 +156,10 @@ describe('PermissionGuard', () => {
         permissions: ['members.manage'],
       },
     };
-    const { guard, findFirst } = makeGuard(['members.manage'], null);
+    const { guard, resolve } = makeGuard(['members.manage'], null);
 
     await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
-    expect(findFirst).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it('ignores request-local cache from another user and resolves from the database', async () => {
@@ -177,10 +172,10 @@ describe('PermissionGuard', () => {
         permissions: ['members.manage'],
       },
     };
-    const { guard, findFirst } = makeGuard(['members.manage'], membership);
+    const { guard, resolve } = makeGuard(['members.manage'], membership);
 
     await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
-    expect(findFirst).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledTimes(1);
     expect(request.accessControl).toEqual({
       userId: 'user-1',
       organizationId: 'org-1',
@@ -199,10 +194,10 @@ describe('PermissionGuard', () => {
         permissions: ['members.manage'],
       },
     };
-    const { guard, findFirst } = makeGuard(['members.manage'], membership);
+    const { guard, resolve } = makeGuard(['members.manage'], membership);
 
     await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
-    expect(findFirst).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledTimes(1);
     expect(request.accessControl).toEqual({
       userId: 'user-1',
       organizationId: 'org-1',

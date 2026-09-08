@@ -1,18 +1,15 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { MembershipStatus, RoleScope } from '../../generated/prisma/client';
 import { AuthError } from '../../common/exceptions/auth-error';
 import type { AuthContext } from '../../auth/decorators/current-user.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
 import { REQUIRED_PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import {
+  AccessControlContext,
+  OrganizationPermissionResolver,
+} from '../services/organization-permission-resolver.service';
 
-export interface AccessControlContext {
-  userId: string;
-  organizationId: string;
-  membershipId: string;
-  permissions: string[];
-}
+export type { AccessControlContext } from '../services/organization-permission-resolver.service';
 
 type AccessControlledRequest = Request & {
   user?: AuthContext;
@@ -23,7 +20,7 @@ type AccessControlledRequest = Request & {
 export class PermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly prisma: PrismaService,
+    private readonly resolver: OrganizationPermissionResolver,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -96,24 +93,7 @@ export class PermissionGuard implements CanActivate {
     auth: AuthContext,
     organizationId: string,
   ): Promise<AccessControlContext> {
-    const membership = await this.prisma.organizationMembership.findFirst({
-      where: {
-        userId: auth.userId,
-        organizationId,
-        status: MembershipStatus.ACTIVE,
-      },
-      include: {
-        roles: {
-          include: {
-            role: {
-              include: {
-                permissions: { include: { permission: true } },
-              },
-            },
-          },
-        },
-      },
-    });
+    const membership = await this.resolver.resolve(auth.userId, organizationId);
 
     if (!membership) {
       throw new AuthError(
@@ -123,25 +103,6 @@ export class PermissionGuard implements CanActivate {
       );
     }
 
-    const permissions = new Set<string>();
-    for (const membershipRole of membership.roles) {
-      const role = membershipRole.role;
-      if (
-        role.organizationId !== organizationId ||
-        role.scope !== RoleScope.ORGANIZATION
-      ) {
-        continue;
-      }
-      for (const rolePermission of role.permissions) {
-        permissions.add(rolePermission.permission.key);
-      }
-    }
-
-    return {
-      userId: auth.userId,
-      organizationId,
-      membershipId: membership.id,
-      permissions: [...permissions],
-    };
+    return membership;
   }
 }
