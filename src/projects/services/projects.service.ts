@@ -221,6 +221,12 @@ export class ProjectsService {
   ) {
     return this.transactions.run(async (tx) => {
       const project = await this.findInTenant(organizationId, projectId, tx);
+      if (project.status === ProjectStatus.ARCHIVED)
+        throw new AuthError(
+          'PROJECT_ALREADY_ARCHIVED',
+          409,
+          'Project is archived',
+        );
       if (status === ProjectStatus.ARCHIVED || status === ProjectStatus.ON_HOLD)
         throw new AuthError(
           'PROJECT_STATUS_INVALID',

@@ -80,6 +80,7 @@ export class ProjectRolesController {
     status: 403,
     description: 'TENANT_REQUIRED or PROJECT_ACCESS_DENIED',
   })
+  @ApiResponse({ status: 409, description: 'PROJECT_ROLE_ALREADY_EXISTS' })
   async create(
     @CurrentTenant() org: string,
     @CurrentUser() user: AuthContext,

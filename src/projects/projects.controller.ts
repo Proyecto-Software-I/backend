@@ -161,7 +161,8 @@ export class ProjectsController {
   @ApiResponse({ status: 404, description: 'PROJECT_NOT_FOUND' })
   @ApiResponse({
     status: 409,
-    description: 'PROJECT_STATUS_TRANSITION_INVALID',
+    description:
+      'PROJECT_STATUS_TRANSITION_INVALID or PROJECT_ALREADY_ARCHIVED',
   })
   async updateStatus(
     @CurrentTenant() organizationId: string,

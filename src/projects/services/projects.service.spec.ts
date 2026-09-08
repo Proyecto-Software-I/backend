@@ -112,4 +112,35 @@ describe('ProjectsService', () => {
       expect(update).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('returns PROJECT_ALREADY_ARCHIVED before evaluating a workflow transition', async () => {
+    const update = jest.fn();
+    const requireProject = jest.fn();
+    const tx = mock<Prisma.TransactionClient>({
+      project: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'project-1',
+          status: ProjectStatus.ARCHIVED,
+          archivedAt: new Date(),
+        }),
+        update,
+      },
+    });
+    const service = new ProjectsService(
+      mock<PrismaService>({}),
+      transaction(tx),
+      mock<ProjectAuthorizationService>({ requireProject }),
+    );
+
+    await expect(
+      service.updateStatus(
+        'user-1',
+        'org-1',
+        'project-1',
+        ProjectStatus.COMPLETED,
+      ),
+    ).rejects.toMatchObject({ code: 'PROJECT_ALREADY_ARCHIVED' });
+    expect(requireProject).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
 });

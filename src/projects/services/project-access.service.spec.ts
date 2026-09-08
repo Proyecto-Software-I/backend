@@ -72,8 +72,8 @@ describe('ProjectAccessService', () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it('keeps deletes idempotent without targeting malformed access relations', async () => {
-    const deleted = jest.fn().mockResolvedValue({ count: 0 });
+  it('revokes same-tenant access even when the membership is inactive', async () => {
+    const deleted = jest.fn().mockResolvedValue({ count: 1 });
     const service = new ProjectAccessService(
       mock<PrismaService>({
         project: {
@@ -95,10 +95,7 @@ describe('ProjectAccessService', () => {
         projectId: 'project-1',
         membershipId: 'member-2',
         project: { organizationId: 'org-1', deletedAt: null },
-        membership: {
-          organizationId: 'org-1',
-          status: MembershipStatus.ACTIVE,
-        },
+        membership: { organizationId: 'org-1' },
         role: { organizationId: 'org-1', scope: RoleScope.PROJECT },
       },
     });

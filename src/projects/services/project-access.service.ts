@@ -115,7 +115,7 @@ export class ProjectAccessService {
           projectId,
           membershipId,
           project: { organizationId, deletedAt: null },
-          membership: { organizationId, status: MembershipStatus.ACTIVE },
+          membership: { organizationId },
           role: { organizationId, scope: RoleScope.PROJECT },
         },
       });
