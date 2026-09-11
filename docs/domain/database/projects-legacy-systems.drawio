@@ -272,12 +272,12 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="m86" parent="e85" style="edgeLabel;resizable=0;labelBackgroundColor=none;fontSize=12;align=left;verticalAlign=bottom;" value="0..*" vertex="1">
+        <mxCell id="m86" parent="e85" style="edgeLabel;resizable=0;labelBackgroundColor=none;fontSize=12;align=left;verticalAlign=bottom;" value="0..1" vertex="1">
           <mxGeometry relative="1" x="-1" as="geometry">
             <mxPoint y="16" as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="m87" parent="e85" style="edgeLabel;resizable=0;labelBackgroundColor=none;fontSize=12;align=right;verticalAlign=top;" value="0..1" vertex="1">
+        <mxCell id="m87" parent="e85" style="edgeLabel;resizable=0;labelBackgroundColor=none;fontSize=12;align=right;verticalAlign=top;" value="0..*" vertex="1">
           <mxGeometry relative="1" x="1" as="geometry">
             <mxPoint x="30" y="-20" as="offset" />
           </mxGeometry>
