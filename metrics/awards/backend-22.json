@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "type": "AWARD",
+  "repository": "Proyecto-Software-I/backend",
+  "issue": 22,
+  "issueUrl": "https://github.com/Proyecto-Software-I/backend/issues/22",
+  "pullRequest": 23,
+  "pullRequestUrl": "https://github.com/Proyecto-Software-I/backend/pull/23",
+  "author": "Gris999",
+  "size": "S",
+  "points": 2,
+  "mergedAt": "2026-09-11T00:49:16Z",
+  "awardedAt": "2026-09-11T00:49:35.250751Z",
+  "source": "pull_request_target",
+  "sprint": {
+    "id": "sprint-1",
+    "number": 1,
+    "name": "Ingest",
+    "start": "2026-09-01T00:00:00-04:00",
+    "end": "2026-09-14T00:00:00-04:00"
+  },
+  "sprintAssignment": "mergedAt"
+}
