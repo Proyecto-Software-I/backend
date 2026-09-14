@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
   "repository": "Proyecto-Software-I/backend",
-  "generatedAt": "2026-09-11T12:14:01.343890Z",
+  "generatedAt": "2026-09-14T09:46:56.779878Z",
   "currentSprint": {
-    "id": "sprint-1",
-    "number": 1,
-    "name": "Ingest",
-    "start": "2026-09-01T00:00:00-04:00",
-    "end": "2026-09-14T00:00:00-04:00"
+    "id": "sprint-2",
+    "number": 2,
+    "name": "Understand",
+    "start": "2026-09-14T00:00:00-04:00",
+    "end": "2026-09-28T00:00:00-04:00"
   },
   "resources": {
     "allTime": "metrics/all-time.json",
@@ -29,7 +29,7 @@
       "name": "Ingest",
       "start": "2026-09-01T00:00:00-04:00",
       "end": "2026-09-14T00:00:00-04:00",
-      "status": "active",
+      "status": "completed",
       "points": 33,
       "awards": 6,
       "path": "metrics/sprints/sprint-1.json"
@@ -40,7 +40,7 @@
       "name": "Understand",
       "start": "2026-09-14T00:00:00-04:00",
       "end": "2026-09-28T00:00:00-04:00",
-      "status": "upcoming",
+      "status": "active",
       "points": 0,
       "awards": 0,
       "path": "metrics/sprints/sprint-2.json"
