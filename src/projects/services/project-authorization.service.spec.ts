@@ -19,4 +19,33 @@ describe('ProjectAuthorizationService', () => {
     ).resolves.toEqual(new Set());
     expect(findFirst).toHaveBeenCalledTimes(1);
   });
+
+  it('unions direct same-tenant ProjectAccess permissions with organization permissions', async () => {
+    const service = new ProjectAuthorizationService(
+      mock<PrismaService>({
+        projectAccess: {
+          findFirst: jest.fn().mockResolvedValue({
+            role: {
+              permissions: [
+                { permission: { key: 'systems.read' } },
+                { permission: { key: 'systems.manage' } },
+              ],
+            },
+          }),
+        },
+      }),
+      mock<OrganizationPermissionResolver>({
+        resolve: jest.fn().mockResolvedValue({
+          membershipId: 'member-1',
+          permissions: ['projects.read'],
+        }),
+      }),
+    );
+
+    await expect(
+      service.permissionsFor('user-1', 'org-1', 'project-1'),
+    ).resolves.toEqual(
+      new Set(['projects.read', 'systems.read', 'systems.manage']),
+    );
+  });
 });

@@ -13,6 +13,8 @@ const PROJECT_PERMISSIONS = new Set([
   'projects.read',
   'projects.manage',
   'projects.delete',
+  'systems.read',
+  'systems.manage',
 ]);
 
 @Injectable()
