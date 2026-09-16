@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { ProjectsModule } from './projects/projects.module';
+import { LegacySystemsModule } from './legacy-systems/legacy-systems.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ProjectsModule } from './projects/projects.module';
     AuthModule,
     OrganizationsModule,
     ProjectsModule,
+    LegacySystemsModule,
   ],
   controllers: [AppController],
 })

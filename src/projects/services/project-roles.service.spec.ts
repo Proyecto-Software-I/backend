@@ -90,4 +90,46 @@ describe('ProjectRolesService', () => {
       }),
     ).resolves.toMatchObject({ id: 'role-1' });
   });
+
+  it('accepts delegated system permissions but rejects undelegated and unknown keys', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'role-1' });
+    const tx = mock<Prisma.TransactionClient>({
+      role: { create },
+      permission: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'permission-1' }, { id: 'permission-2' }]),
+      },
+    });
+    const transactions = mock<SerializableTransactionService>({
+      run: jest.fn(
+        (callback: (client: Prisma.TransactionClient) => Promise<unknown>) =>
+          callback(tx),
+      ),
+    });
+    const service = new ProjectRolesService(
+      mock<PrismaService>({}),
+      authorization(['members.manage', 'projects.read', 'systems.read']),
+      transactions,
+    );
+
+    await expect(
+      service.create('user-1', 'org-1', {
+        name: 'System reader',
+        permissionKeys: ['projects.read', 'systems.read'],
+      }),
+    ).resolves.toMatchObject({ id: 'role-1' });
+    await expect(
+      service.create('user-1', 'org-1', {
+        name: 'System manager',
+        permissionKeys: ['systems.manage'],
+      }),
+    ).rejects.toMatchObject({ code: 'PROJECT_ROLE_INVALID' });
+    await expect(
+      service.create('user-1', 'org-1', {
+        name: 'Unknown',
+        permissionKeys: ['systems.delete'],
+      }),
+    ).rejects.toMatchObject({ code: 'PROJECT_ROLE_INVALID' });
+  });
 });

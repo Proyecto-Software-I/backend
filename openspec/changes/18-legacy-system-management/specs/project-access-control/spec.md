@@ -8,10 +8,10 @@ Projects SHALL expose `GET/POST /api/projects/roles` and `PATCH/DELETE /api/proj
 - **WHEN** they create then update a PROJECT role
 - **THEN** responses persist exactly those permissions and preserve its generated key
 
-#### Scenario: Grant a system permission through ProjectAccess
-- **GIVEN** an organization-level authorized role administrator delegates `systems.read` or `systems.manage` in a PROJECT role and assigns it through ProjectAccess
+#### Scenario: Grant Project and system permissions through ProjectAccess
+- **GIVEN** an organization-level authorized role administrator delegates `projects.read` plus `systems.read` or `systems.manage` in a PROJECT role and assigns it through ProjectAccess
 - **WHEN** the assigned ACTIVE member makes the corresponding operation on that Project
-- **THEN** the permission is part of the existing effective Project permission union for the next request
+- **THEN** both permissions are part of the existing effective Project permission union for the next request
 
 #### Scenario: Reject invalid role content
 - **GIVEN** permissions are duplicate, unknown, include `projects.create`, or exceed caller delegation authority

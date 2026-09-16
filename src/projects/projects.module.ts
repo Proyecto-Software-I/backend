@@ -31,5 +31,6 @@ import { ProjectsService } from './services/projects.service';
     ProjectAccessService,
     TenantRequiredGuard,
   ],
+  exports: [ProjectAuthorizationService],
 })
 export class ProjectsModule {}

@@ -27,22 +27,23 @@ For each operation, `JwtAuthGuard` plus the existing tenant guard establishes an
 
 1. Load the route Project using `id`, active `organizationId`, and `deletedAt: null`; return `PROJECT_NOT_FOUND` when absent or foreign.
 2. Resolve existing effective Project permissions for the authenticated user, tenant, and Project. Valid ORGANIZATION permissions and the matching ACTIVE membership/PROJECT-role `ProjectAccess` permissions are deduplicated.
-3. Require `systems.read` for list/detail or `systems.manage` for create/update; return `SYSTEM_ACCESS_DENIED` if absent.
-4. For detail/update only, load the non-deleted LegacySystem constrained by both `id` and the already validated `projectId`; return `SYSTEM_NOT_FOUND` for missing, foreign, or mismatched rows.
+3. Require `projects.read`; return `PROJECT_ACCESS_DENIED` if absent.
+4. Require `systems.read` for list/detail or `systems.manage` for create/update; return `SYSTEM_ACCESS_DENIED` if absent.
+5. For detail/update only, load the non-deleted LegacySystem constrained by both `id` and the already validated `projectId`; return `SYSTEM_NOT_FOUND` for missing, foreign, or mismatched rows.
 
-The order prevents foreign Project disclosure and ensures an unauthorized caller cannot probe system IDs in an in-tenant Project. It also deliberately permits a PROJECT role containing only `systems.read` or `systems.manage`, as confirmed by the product decision; `projects.read` is not an additional requirement. The existing `ProjectRolesService` allowlist and delegation check will be extended, not bypassed, so `members.manage` plus the caller's organization-level delegated permission remains required to grant either key.
+The order prevents foreign Project disclosure and ensures an unauthorized caller cannot probe system IDs in an in-tenant Project. A PROJECT role assigned through ProjectAccess may grant `projects.read` plus either system permission, but a role containing only `systems.read` or `systems.manage` is insufficient. The existing `ProjectRolesService` allowlist and delegation check will be extended, not bypassed, so `members.manage` plus the caller's organization-level delegated permission remains required to grant each key.
 
 ### Contract, validation, and persistence boundaries
 
-DTO transformation will trim/uppercase `code` on create and validate the same hyphenated uppercase grammar used by Project keys, with the model's 80-character limit. Update DTOs omit `code` and all ownership/metadata fields. The global whitelist plus `forbidNonWhitelisted` behavior makes manipulated fields a `VALIDATION_ERROR` rather than ignored input.
+DTO transformation will trim/uppercase `code` on create and validate the same hyphenated uppercase grammar used by Project keys, with the model's 80-character limit. Criticality values outside `LOW`, `MEDIUM`, `HIGH`, and `MISSION_CRITICAL` map to `SYSTEM_CRITICALITY_INVALID`; malformed types/shapes and forbidden fields map to `VALIDATION_ERROR`. Update DTOs omit `code` and all ownership/metadata fields. The global whitelist plus `forbidNonWhitelisted` behavior makes manipulated fields a `VALIDATION_ERROR` rather than ignored input.
 
-The service will create and select only functional columns; response mapping will whitelist public fields rather than serialize Prisma rows. It will filter `deletedAt: null`, order lists by `createdAt desc, id asc`, and translate the `(projectId, code)` unique conflict to `SYSTEM_ALREADY_EXISTS`. No transaction is needed for the single-row system mutation; an implementation-time multi-row change must update this plan first.
+The service will create and select only functional columns; response mapping will whitelist public fields rather than serialize Prisma rows. It will filter `deletedAt: null`, order lists by `createdAt desc, id asc`, and translate any `(projectId, code)` unique conflict to `SYSTEM_ALREADY_EXISTS`, without a `deletedAt` qualification. No transaction is needed for the single-row system mutation; an implementation-time multi-row change must update this plan first.
 
 ### Database, Swagger, and testing approach
 
-No schema change, migration, seed change, dependency, or generated-client edit is planned: the schema and permission seed already provide every needed column, enum, uniqueness rule, and permission key. Swagger DTOs will explicitly show the enum, allowed requests, wrappers, UUID parameters, response statuses, errors, permissions, ownership, and immutable/no-metadata rules.
+No schema change, migration, seed change, dependency, or generated-client edit is planned: the schema and permission seed already provide every needed column, enum, uniqueness rule, and permission key. Swagger DTOs will explicitly show the enum, allowed requests, wrappers, UUID parameters, response statuses, including `SYSTEM_CRITICALITY_INVALID`, `VALIDATION_ERROR`, `PROJECT_ACCESS_DENIED`, and `SYSTEM_ACCESS_DENIED`, permissions, ownership, and immutable/no-metadata rules.
 
-Add focused service/DTO/role-allowlist unit tests. Extend the real PostgreSQL E2E suite using its existing authenticated tenants, role helpers, active-organization switching, stable-error assertions, cleanup, and Swagger document checks. Include the direct ProjectAccess-derived `systems.*` scenario, not just organization-role access.
+Add focused service/DTO/role-allowlist unit tests. Extend the real PostgreSQL E2E suite using its existing authenticated tenants, role helpers, active-organization switching, stable-error assertions, cleanup, and Swagger document checks. Cover unsupported criticality as `SYSTEM_CRITICALITY_INVALID`, malformed/forbidden input as `VALIDATION_ERROR`, and a ProjectAccess-derived `projects.read` plus `systems.*` grant; prove `systems.*` alone is denied.
 
 ## Risks / Trade-offs
 
