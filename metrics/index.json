@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
   "repository": "Proyecto-Software-I/backend",
-  "generatedAt": "2026-09-28T10:48:15.504523Z",
+  "generatedAt": "2026-10-12T11:49:23.204570Z",
   "currentSprint": {
-    "id": "sprint-3",
-    "number": 3,
-    "name": "Plan & Prepare",
-    "start": "2026-09-28T00:00:00-04:00",
-    "end": "2026-10-12T00:00:00-04:00"
+    "id": "sprint-4",
+    "number": 4,
+    "name": "Modernize Safely",
+    "start": "2026-10-12T00:00:00-04:00",
+    "end": "2026-10-26T00:00:00-04:00"
   },
   "resources": {
     "allTime": "metrics/all-time.json",
@@ -51,7 +51,7 @@
       "name": "Plan & Prepare",
       "start": "2026-09-28T00:00:00-04:00",
       "end": "2026-10-12T00:00:00-04:00",
-      "status": "active",
+      "status": "completed",
       "points": 0,
       "awards": 0,
       "path": "metrics/sprints/sprint-3.json"
@@ -62,7 +62,7 @@
       "name": "Modernize Safely",
       "start": "2026-10-12T00:00:00-04:00",
       "end": "2026-10-26T00:00:00-04:00",
-      "status": "upcoming",
+      "status": "active",
       "points": 0,
       "awards": 0,
       "path": "metrics/sprints/sprint-4.json"
