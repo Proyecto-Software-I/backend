@@ -1,14 +1,8 @@
 {
   "schemaVersion": 2,
   "repository": "Proyecto-Software-I/backend",
-  "generatedAt": "2026-10-26T09:58:23.795465Z",
-  "currentSprint": {
-    "id": "sprint-5",
-    "number": 5,
-    "name": "Productize",
-    "start": "2026-10-26T00:00:00-04:00",
-    "end": "2026-11-09T00:00:00-04:00"
-  },
+  "generatedAt": "2026-11-09T12:37:22.547611Z",
+  "currentSprint": null,
   "resources": {
     "allTime": "metrics/all-time.json",
     "current": "metrics/current.json",
@@ -73,7 +67,7 @@
       "name": "Productize",
       "start": "2026-10-26T00:00:00-04:00",
       "end": "2026-11-09T00:00:00-04:00",
-      "status": "active",
+      "status": "completed",
       "points": 0,
       "awards": 0,
       "path": "metrics/sprints/sprint-5.json"
